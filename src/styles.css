@@ -39,6 +39,13 @@ input[type="number"] { width: 84px; text-align: right; }
 .hint { color: var(--muted); font-size: 12px; }
 
 .page-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); }
+.page-bar button.in-set { background: #e6f6ec; color: var(--ok); border-color: #b7e0c4; }
+.set-bar { padding: 8px 12px; border-bottom: 1px solid var(--border); background: #f7faff; }
+.set-title { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+.set-item { display: inline-flex; align-items: center; gap: 4px; background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 2px 6px 2px 10px; margin: 0 6px 6px 0; }
+.set-item .pg { font-size: 12px; font-weight: 600; color: var(--muted); }
+.set-item .label-input { width: 150px; border: none; padding: 2px 4px; }
+.set-item button { border: none; padding: 2px 6px; border-radius: 50%; }
 .hint-row { padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); }
 .hint-input { width: 100%; }
 .preview { flex: 1; overflow: auto; background: #e9ecef; padding: 12px; text-align: center; }

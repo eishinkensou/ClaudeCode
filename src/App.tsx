@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { analyzeImage, getHealth, type HealthInfo } from "./api";
+import { analyzeImages, getHealth, type HealthInfo } from "./api";
 import { loadPdf, renderPageToImage, type PdfDoc, type RenderedPage } from "./pdf";
 import { downloadCsv } from "./export";
 import type { Takeoff } from "./types";
 import ResultEditor from "./components/ResultEditor";
+
+interface SetItem {
+  page: number;
+  label: string;
+}
+
+const LABELS = ["平面図", "天井伏図", "仕上表", "建具表", "断面図", "立面図", "詳細図", "特記仕様書"];
 
 export default function App() {
   const [health, setHealth] = useState<HealthInfo | null>(null);
@@ -12,6 +19,7 @@ export default function App() {
   const [pageIndex, setPageIndex] = useState(1);
   const [page, setPage] = useState<RenderedPage | null>(null);
   const [hint, setHint] = useState("");
+  const [set, setSet] = useState<SetItem[]>([]);
   const [takeoff, setTakeoff] = useState<Takeoff | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
@@ -24,8 +32,7 @@ export default function App() {
 
   const showPage = async (d: PdfDoc, idx: number) => {
     setStatus("ページを描画中…");
-    const img = await renderPageToImage(d, idx);
-    setPage(img);
+    setPage(await renderPageToImage(d, idx));
     setStatus("");
   };
 
@@ -35,6 +42,7 @@ export default function App() {
     setBusy(true);
     setStatus("PDFを読み込み中…");
     setTakeoff(null);
+    setSet([]);
     try {
       const d = await loadPdf(await file.arrayBuffer());
       setDoc(d);
@@ -49,7 +57,7 @@ export default function App() {
   };
 
   const gotoPage = async (idx: number) => {
-    if (!doc || idx < 1 || idx > numPages) return;
+    if (!doc || idx < 1 || idx > numPages || busy) return;
     setPageIndex(idx);
     setBusy(true);
     try {
@@ -59,18 +67,35 @@ export default function App() {
     }
   };
 
+  const addCurrentPage = () => {
+    if (set.some((s) => s.page === pageIndex)) return;
+    setSet((s) => [...s, { page: pageIndex, label: "" }].sort((a, b) => a.page - b.page));
+  };
+  const removeFromSet = (pg: number) => setSet((s) => s.filter((x) => x.page !== pg));
+  const setLabel = (pg: number, label: string) =>
+    setSet((s) => s.map((x) => (x.page === pg ? { ...x, label } : x)));
+
   const analyze = async () => {
-    if (!page) return;
+    if (!doc) return;
+    // 解析セットがあればそれを、無ければ現在ページを対象に
+    const targets: SetItem[] = set.length > 0 ? set : [{ page: pageIndex, label: "" }];
     setBusy(true);
-    setStatus("AIが図面を読み取り中…（30秒〜1分ほどかかります）");
+    setTakeoff(null);
     try {
-      const res = await analyzeImage(page.base64, page.mediaType, hint);
+      setStatus(`図面を準備中…（${targets.length}枚）`);
+      const images = [];
+      for (const t of targets) {
+        const img = await renderPageToImage(doc, t.page, 2000);
+        images.push({ base64: img.base64, mediaType: img.mediaType, label: t.label, page: t.page });
+      }
+      setStatus(`AIが${targets.length}枚の図面を読み取り中…（枚数に応じて1〜3分ほど）`);
+      const res = await analyzeImages(images, hint);
       setTakeoff(res.takeoff);
       setIsMock(res.mock);
       setStatus(
         res.mock
-          ? "サンプル表示中（APIキー未設定）。本物のAI拾いには .env にキーを設定してください。"
-          : `AI拾い完了（${res.model}）${res.usage ? ` / 入力${res.usage.input_tokens ?? "?"}・出力${res.usage.output_tokens ?? "?"}トークン` : ""}`
+          ? "サンプル表示中（APIキー未設定）。"
+          : `AI拾い完了（${res.model} / ${targets.length}枚）${res.usage ? ` / 入力${res.usage.input_tokens ?? "?"}・出力${res.usage.output_tokens ?? "?"}トークン` : ""}`
       );
     } catch (err) {
       setStatus(`解析エラー: ${(err as Error).message}`);
@@ -78,6 +103,9 @@ export default function App() {
       setBusy(false);
     }
   };
+
+  const inSet = set.some((s) => s.page === pageIndex);
+  const analyzeLabel = set.length > 0 ? `解析セット（${set.length}枚）をAIで拾う` : "このページをAIで拾う";
 
   return (
     <div className="app">
@@ -104,17 +132,45 @@ export default function App() {
                 <button disabled={pageIndex <= 1 || busy} onClick={() => gotoPage(pageIndex - 1)}>◀</button>
                 <span>{pageIndex} / {numPages}</span>
                 <button disabled={pageIndex >= numPages || busy} onClick={() => gotoPage(pageIndex + 1)}>▶</button>
+                <button className={inSet ? "in-set" : ""} disabled={inSet} onClick={addCurrentPage} title="このページを解析セットに追加">
+                  {inSet ? "✓ 追加済" : "＋解析に追加"}
+                </button>
                 <span className="grow" />
-                <button className="primary" disabled={busy} onClick={analyze}>このページをAIで拾う</button>
+                <button className="primary" disabled={busy} onClick={analyze}>{analyzeLabel}</button>
               </div>
+
+              {set.length > 0 && (
+                <div className="set-bar">
+                  <div className="set-title">解析セット（複数図面を相互参照して拾います）</div>
+                  {set.map((s) => (
+                    <div className="set-item" key={s.page}>
+                      <span className="pg">p.{s.page}</span>
+                      <input
+                        list="label-list"
+                        className="label-input"
+                        placeholder="種別（平面図/仕上表/建具表…）"
+                        value={s.label}
+                        onChange={(e) => setLabel(s.page, e.target.value)}
+                      />
+                      <button onClick={() => removeFromSet(s.page)}>✕</button>
+                    </div>
+                  ))}
+                  <datalist id="label-list">
+                    {LABELS.map((l) => <option key={l} value={l} />)}
+                  </datalist>
+                  <div className="hint">※ 枚数が多いほど精度は上がりますが、解析時間と料金も増えます（目安5〜8枚）。</div>
+                </div>
+              )}
+
               <div className="hint-row">
                 <input
                   className="hint-input"
-                  placeholder="補足（任意）：例『天伏図。壁下地はスラブまで、ボードは天井下まで』"
+                  placeholder="補足（任意）：例『縮尺1/300。壁下地はスラブまで、ボードは天井下まで。仕上表p.5、建具表p.8』"
                   value={hint}
                   onChange={(e) => setHint(e.target.value)}
                 />
               </div>
+
               <div className="preview">
                 <img src={page.dataUrl} alt="図面プレビュー" />
               </div>
@@ -123,7 +179,7 @@ export default function App() {
             <div className="empty">
               {busy ? "処理中…" : "「PDFを開く」から図面を読み込んでください。"}
               <br />
-              <span className="hint">平面図・天井伏図・建具表・仕上表などを読み取ります。</span>
+              <span className="hint">平面図・天井伏図・建具表・仕上表・断面図などを読み取ります。</span>
             </div>
           )}
         </div>
@@ -136,9 +192,11 @@ export default function App() {
             </>
           ) : (
             <div className="empty">
-              図面を開いて「このページをAIで拾う」を押すと、
+              関連する図面（平面図・仕上表・建具表・断面 等）を
               <br />
-              部屋ごとの拾い出し（天井・壁・ボード・開口補強）が表示されます。
+              <strong>「＋解析に追加」</strong>でまとめてから
+              <br />
+              <strong>「解析セットをAIで拾う」</strong>を押すと、相互参照して拾います。
             </div>
           )}
         </div>

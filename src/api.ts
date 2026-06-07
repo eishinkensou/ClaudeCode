@@ -16,15 +16,18 @@ export async function getHealth(): Promise<HealthInfo | null> {
   }
 }
 
-export async function analyzeImage(
-  base64: string,
-  mediaType: string,
-  hint: string
-): Promise<AnalyzeResponse> {
+export interface AnalyzeImage {
+  base64: string;
+  mediaType: string;
+  label?: string;
+  page?: number;
+}
+
+export async function analyzeImages(images: AnalyzeImage[], hint: string): Promise<AnalyzeResponse> {
   const r = await fetch("/api/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imageBase64: base64, mediaType, hint }),
+    body: JSON.stringify({ images, hint }),
   });
   const data = await r.json();
   if (!r.ok) {

@@ -12,8 +12,8 @@ const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-4-8";
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 
 const app = express();
-// 図面画像（base64）を載せるので上限を上げる
-app.use(express.json({ limit: "32mb" }));
+// 複数ページの図面画像（base64）を載せるので上限を大きめに
+app.use(express.json({ limit: "96mb" }));
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, hasKey: !!API_KEY, model: MODEL });
@@ -21,13 +21,26 @@ app.get("/api/health", (_req, res) => {
 
 /**
  * 図面画像を受け取り、Claude のビジョンで部屋ごとの拾い出しを返す。
- * APIキー未設定時はサンプル（モック）を返し、UIの動作確認だけできるようにする。
- * body: { imageBase64: string, mediaType: "image/png"|"image/jpeg", hint?: string }
+ * 複数ページ（平面図＋仕上表＋建具表＋天伏図＋断面 等）をまとめて渡すと相互参照して拾う。
+ * APIキー未設定時はサンプル（モック）を返す。
+ * body: {
+ *   images?: [{ base64, mediaType, label?, page? }],   // 複数ページ（推奨）
+ *   imageBase64?, mediaType?,                            // 単一ページ（後方互換）
+ *   hint?: string
+ * }
  */
 app.post("/api/analyze", async (req, res) => {
-  const { imageBase64, mediaType = "image/png", hint = "" } = req.body || {};
-  if (!imageBase64) {
-    return res.status(400).json({ error: "imageBase64 がありません" });
+  const { imageBase64, mediaType = "image/png", hint = "", images } = req.body || {};
+
+  // 入力画像を配列に正規化
+  let imgs = [];
+  if (Array.isArray(images) && images.length > 0) {
+    imgs = images;
+  } else if (imageBase64) {
+    imgs = [{ base64: imageBase64, mediaType, label: "", page: 1 }];
+  }
+  if (imgs.length === 0) {
+    return res.status(400).json({ error: "解析する画像がありません" });
   }
 
   // APIキーが無ければモックを返す（キー取得前でも動作確認できる）
@@ -37,9 +50,25 @@ app.post("/api/analyze", async (req, res) => {
 
   try {
     const client = new Anthropic({ apiKey: API_KEY });
-    const userText =
-      "この図面を読み取り、部屋ごとに軽天・ボード工事の数量を拾い出してください。" +
-      (hint ? `\n\n補足情報: ${hint}` : "");
+
+    // 各図面を「ラベル＋画像」の組で並べ、最後に指示文を置く
+    const content = [];
+    imgs.forEach((im, i) => {
+      const label = im.label ? `（${im.label}）` : "";
+      const pg = im.page ? ` p.${im.page}` : "";
+      content.push({ type: "text", text: `=== 図面${i + 1}${label}${pg} ===` });
+      content.push({
+        type: "image",
+        source: { type: "base64", media_type: im.mediaType || "image/png", data: im.base64 },
+      });
+    });
+    content.push({
+      type: "text",
+      text:
+        `上記${imgs.length}枚の図面を相互に参照し、平面図の各室について軽天・ボード工事の数量を拾い出してください。` +
+        `仕上表からボード種別、建具表から開口、断面図/立面図/詳細図から壁高さ・天井高・ふところを補完してください。` +
+        (hint ? `\n\n補足情報: ${hint}` : ""),
+    });
 
     const message = await client.messages.parse({
       model: MODEL,
@@ -50,18 +79,7 @@ app.post("/api/analyze", async (req, res) => {
         format: zodOutputFormat(Takeoff),
       },
       system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: { type: "base64", media_type: mediaType, data: imageBase64 },
-            },
-            { type: "text", text: userText },
-          ],
-        },
-      ],
+      messages: [{ role: "user", content }],
     });
 
     if (!message.parsed_output) {
