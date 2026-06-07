@@ -90,6 +90,14 @@ export default function PdfViewer(props: Props) {
         props.onAddCeiling([toPdf(x1, y1), toPdf(x2, y1), toPdf(x2, y2), toPdf(x1, y2)]);
       }
       setDrag(null);
+    } else if (mode === "draw-wall" && firstPt) {
+      // ドラッグ＆リリースでも壁を確定（クリック2回でもOK）
+      const end = localXY(e);
+      if (Math.hypot(end.x - firstPt.x, end.y - firstPt.y) > 8) {
+        props.onAddWall(toPdf(firstPt.x, firstPt.y), toPdf(end.x, end.y));
+        setFirstPt(null);
+        setDrag(null);
+      }
     }
   };
 

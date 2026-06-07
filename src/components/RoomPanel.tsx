@@ -8,7 +8,7 @@ import type {
   Wall,
   WallBoardLayer,
 } from "../types";
-import { ceilingAreaM2, wallLengthM } from "../estimate";
+import { ceilingAreaM2, wallLengthM, wallHeightsMm } from "../estimate";
 import { roomColor } from "../colors";
 
 interface Props {
@@ -127,7 +127,19 @@ export default function RoomPanel(props: Props) {
                   patch({ ceilingHeightMm: e.target.value ? Number(e.target.value) : undefined })
                 }
               />
-              <span className="hint">mm</span>
+              <span className="hint">mm（ボード=天井下の高さ）</span>
+            </div>
+            <div className="fld">
+              <label>スラブ高さ</label>
+              <input
+                type="number"
+                placeholder={String(settings.defaultSlabHeightMm)}
+                value={room.slabHeightMm ?? ""}
+                onChange={(e) =>
+                  patch({ slabHeightMm: e.target.value ? Number(e.target.value) : undefined })
+                }
+              />
+              <span className="hint">mm（階高・下地=スラブの高さ）</span>
             </div>
 
             <div className="sub">天井ボード（重ね貼り可）</div>
@@ -170,7 +182,7 @@ export default function RoomPanel(props: Props) {
           <fieldset>
             <legend>壁（{room.walls.length}本）</legend>
             <div className="wall-actions">
-              <button onClick={() => addWall(room, props, settings)}>＋壁を追加（手入力）</button>
+              <button onClick={() => addWall(room, props)}>＋壁を追加（手入力）</button>
               {room.polygon.length >= 3 && (
                 <button onClick={() => props.onGenerateWalls(room.id)}>周長から壁生成</button>
               )}
@@ -182,6 +194,7 @@ export default function RoomPanel(props: Props) {
                 wall={wall}
                 index={i}
                 scale={roomScale}
+                room={room}
                 settings={settings}
                 onChange={(w) => {
                   const next = [...room.walls];
@@ -217,7 +230,7 @@ export default function RoomPanel(props: Props) {
                   name: `建具${room.openings.length + 1}`,
                   kind: "door",
                   widthMm: 900,
-                  heightMm: room.ceilingHeightMm ?? settings.defaultWallHeightMm,
+                  heightMm: 2000,
                   count: 1,
                   wallId: room.walls[0]?.id,
                 };
@@ -237,12 +250,13 @@ export default function RoomPanel(props: Props) {
   );
 }
 
-function addWall(room: Room, props: Props, settings: AppSettings) {
+function addWall(room: Room, props: Props) {
   const w: Wall = {
     id: nid("w"),
     name: `W${room.walls.length + 1}`,
     lengthMmManual: 3000,
-    heightMm: settings.defaultWallHeightMm,
+    framingReach: "slab",
+    boardReach: "ceiling",
     boards: [],
     includeFraming: true,
   };
@@ -253,14 +267,16 @@ function WallCard(props: {
   wall: Wall;
   index: number;
   scale: Scale;
+  room: Room;
   settings: AppSettings;
   onChange: (w: Wall) => void;
   onDelete: () => void;
 }) {
-  const { wall, scale, settings } = props;
+  const { wall, scale, room, settings } = props;
   const set = (p: Partial<Wall>) => props.onChange({ ...wall, ...p });
   const lenM = wallLengthM(wall, scale);
   const bt = settings.boardTypes;
+  const { framingHeightMm, boardHeightMm } = wallHeightsMm(wall, room, settings);
 
   return (
     <div className="card">
@@ -292,24 +308,34 @@ function WallCard(props: {
         )}
       </div>
       <div className="fld">
-        <label>高さ</label>
-        <input
-          type="number"
-          placeholder={String(settings.defaultWallHeightMm)}
-          value={wall.heightMm ?? ""}
-          onChange={(e) => set({ heightMm: e.target.value ? Number(e.target.value) : undefined })}
-        />
-        <span className="hint">mm</span>
-      </div>
-      <div className="fld">
         <label>
           <input
             type="checkbox"
             checked={wall.includeFraming}
             onChange={(e) => set({ includeFraming: e.target.checked })}
           />{" "}
-          壁下地を計上
+          壁下地
         </label>
+        <select
+          value={wall.framingReach}
+          disabled={!wall.includeFraming}
+          onChange={(e) => set({ framingReach: e.target.value as Wall["framingReach"] })}
+        >
+          <option value="slab">スラブまで</option>
+          <option value="ceiling">天井まで</option>
+        </select>
+        <span className="hint">= {(framingHeightMm / 1000).toFixed(2)}m</span>
+      </div>
+      <div className="fld">
+        <label>ボード高さ</label>
+        <select
+          value={wall.boardReach}
+          onChange={(e) => set({ boardReach: e.target.value as Wall["boardReach"] })}
+        >
+          <option value="ceiling">天井下まで</option>
+          <option value="slab">スラブまで</option>
+        </select>
+        <span className="hint">= {(boardHeightMm / 1000).toFixed(2)}m</span>
       </div>
       <div className="sub">壁ボード（種類・面数）</div>
       {wall.boards.map((b, i) => (

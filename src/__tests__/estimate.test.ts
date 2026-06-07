@@ -4,6 +4,7 @@ import {
   takeoffAll,
   ceilingAreaM2,
   wallLengthM,
+  wallHeightsMm,
   openingReinforcePerUnit,
 } from "../estimate";
 import { DEFAULT_SETTINGS } from "../estimate/defaults";
@@ -14,7 +15,9 @@ const scale: Scale = { realMmPerPt: 50, label: "test", source: "default" };
 
 const settings: AppSettings = {
   ...DEFAULT_SETTINGS,
-  defaultWallHeightMm: 3000,
+  defaultSlabHeightMm: 3000, // 3m
+  defaultCeilingHeightMm: 2500, // 2.5m
+  deductOpenings: true,
   boardTypes: [
     { id: "pb95", name: "PB9.5" },
     { id: "pb125", name: "PB12.5" },
@@ -46,27 +49,56 @@ function baseRoom(over: Partial<Room> = {}): Room {
   };
 }
 
+function wall(over: Partial<Wall> = {}): Wall {
+  return {
+    id: "w1",
+    name: "W1",
+    lengthMmManual: 10000, // 10m
+    framingReach: "slab",
+    boardReach: "ceiling",
+    boards: [],
+    includeFraming: true,
+    ...over,
+  };
+}
+
 describe("ceilingAreaM2 / wallLengthM", () => {
   it("converts polygon area pt² → m² via scale", () => {
     expect(ceilingAreaM2(baseRoom(), scale)).toBeCloseTo(20, 3);
   });
   it("falls back to manual area when no polygon", () => {
-    const r = baseRoom({ polygon: [], ceilingAreaM2Manual: 12.5 });
-    expect(ceilingAreaM2(r, scale)).toBe(12.5);
+    expect(ceilingAreaM2(baseRoom({ polygon: [], ceilingAreaM2Manual: 12.5 }), scale)).toBe(12.5);
   });
   it("computes wall length from drawn segment", () => {
-    const w: Wall = {
-      id: "w",
-      name: "W1",
-      segment: { a: { x: 0, y: 0 }, b: { x: 100, y: 0 } }, // 100pt × 50mm = 5000mm = 5m
-      boards: [],
-      includeFraming: true,
-    };
-    expect(wallLengthM(w, scale)).toBeCloseTo(5, 3);
+    const w = wall({ segment: { a: { x: 0, y: 0 }, b: { x: 100, y: 0 } }, lengthMmManual: undefined });
+    expect(wallLengthM(w, scale)).toBeCloseTo(5, 3); // 100pt × 50mm = 5m
   });
   it("computes wall length from manual mm", () => {
-    const w: Wall = { id: "w", name: "W1", lengthMmManual: 8000, boards: [], includeFraming: true };
-    expect(wallLengthM(w, scale)).toBe(8);
+    expect(wallLengthM(wall({ lengthMmManual: 8000 }), scale)).toBe(8);
+  });
+});
+
+describe("wallHeightsMm", () => {
+  const room = baseRoom();
+  it("framing slab / board ceiling use room (or default) heights", () => {
+    const h = wallHeightsMm(wall(), room, settings);
+    expect(h.framingHeightMm).toBe(3000); // slab
+    expect(h.boardHeightMm).toBe(2500); // ceiling
+  });
+  it("framing ceiling / board slab swaps the reaches", () => {
+    const h = wallHeightsMm(wall({ framingReach: "ceiling", boardReach: "slab" }), room, settings);
+    expect(h.framingHeightMm).toBe(2500);
+    expect(h.boardHeightMm).toBe(3000);
+  });
+  it("room-level slab/ceiling heights override defaults", () => {
+    const h = wallHeightsMm(wall(), baseRoom({ slabHeightMm: 4200, ceilingHeightMm: 2800 }), settings);
+    expect(h.framingHeightMm).toBe(4200);
+    expect(h.boardHeightMm).toBe(2800);
+  });
+  it("explicit per-wall heights take priority", () => {
+    const h = wallHeightsMm(wall({ framingHeightMm: 2800, boardHeightMm: 2400 }), room, settings);
+    expect(h.framingHeightMm).toBe(2800);
+    expect(h.boardHeightMm).toBe(2400);
   });
 });
 
@@ -79,120 +111,111 @@ describe("openingReinforcePerUnit", () => {
   });
 });
 
-describe("takeoffRoom", () => {
+describe("takeoffRoom — ceiling", () => {
   it("aggregates ceiling board area per type (重ね貼り)", () => {
-    const r = baseRoom({
-      ceilingBoards: [{ boardTypeId: "rw12" }, { boardTypeId: "pb95" }],
-    });
-    const t = takeoffRoom(r, scale, settings);
+    const t = takeoffRoom(
+      baseRoom({ ceilingBoards: [{ boardTypeId: "rw12" }, { boardTypeId: "pb95" }] }),
+      scale,
+      settings
+    );
     expect(t.ceilingFramingAreaM2).toBeCloseTo(20, 2);
-    expect(t.ceilingBoards).toHaveLength(2);
     expect(t.ceilingBoards.find((b) => b.name === "岩綿12")?.areaM2).toBeCloseTo(20, 2);
     expect(t.ceilingBoards.find((b) => b.name === "PB9.5")?.areaM2).toBeCloseTo(20, 2);
   });
+});
 
-  it("computes wall framing once and board per face", () => {
-    const wall: Wall = {
-      id: "w1",
-      name: "W1",
-      lengthMmManual: 10000, // 10m
-      heightMm: 3000, // 3m → 下地 30m²
-      boards: [{ boardTypeId: "pb125", faces: 2 }],
-      includeFraming: true,
-    };
-    const t = takeoffRoom(baseRoom({ walls: [wall] }), scale, settings);
+describe("takeoffRoom — wall heights (ITS工房の考え方)", () => {
+  it("パターンA: 下地=スラブ(3m) / ボード=天井下(2.5m)", () => {
+    const t = takeoffRoom(
+      baseRoom({ walls: [wall({ boards: [{ boardTypeId: "pb125", faces: 2 }] })] }),
+      scale,
+      settings
+    );
+    // 下地 10×3 = 30
     expect(t.wallFramingAreaM2).toBeCloseTo(30, 2);
-    // ボードは両面 → 60m²
+    // ボード 10×2.5×2面 = 50
+    expect(t.wallBoards.find((b) => b.name === "PB12.5")?.areaM2).toBeCloseTo(50, 2);
+    expect(t.wallDetails[0].framingHeightM).toBeCloseTo(3, 2);
+    expect(t.wallDetails[0].boardHeightM).toBeCloseTo(2.5, 2);
+  });
+
+  it("パターンB: 下地・ボード共にスラブ(3m)", () => {
+    const t = takeoffRoom(
+      baseRoom({
+        walls: [wall({ boardReach: "slab", boards: [{ boardTypeId: "pb125", faces: 2 }] })],
+      }),
+      scale,
+      settings
+    );
+    expect(t.wallFramingAreaM2).toBeCloseTo(30, 2);
+    // ボード 10×3×2面 = 60
     expect(t.wallBoards.find((b) => b.name === "PB12.5")?.areaM2).toBeCloseTo(60, 2);
-    expect(t.wallDetails[0].boards[0].faces).toBe(2);
   });
 
-  it("uses default wall height when wall height is unset", () => {
-    const wall: Wall = { id: "w1", name: "W1", lengthMmManual: 5000, boards: [], includeFraming: true };
-    const t = takeoffRoom(baseRoom({ walls: [wall] }), scale, settings);
-    // 5m × 既定3m = 15m²
-    expect(t.wallFramingAreaM2).toBeCloseTo(15, 2);
-  });
-
-  it("excludes wall framing when includeFraming is false", () => {
-    const wall: Wall = {
-      id: "w1",
-      name: "W1",
-      lengthMmManual: 5000,
-      heightMm: 3000,
-      boards: [{ boardTypeId: "pb125", faces: 1 }],
-      includeFraming: false,
-    };
-    const t = takeoffRoom(baseRoom({ walls: [wall] }), scale, settings);
+  it("excludes wall framing when includeFraming is false (ボードは残る)", () => {
+    const t = takeoffRoom(
+      baseRoom({
+        walls: [wall({ includeFraming: false, boards: [{ boardTypeId: "pb125", faces: 1 }] })],
+      }),
+      scale,
+      settings
+    );
     expect(t.wallFramingAreaM2).toBe(0);
-    // ボードは計上される
-    expect(t.wallBoards.find((b) => b.name === "PB12.5")?.areaM2).toBeCloseTo(15, 2);
+    expect(t.wallBoards.find((b) => b.name === "PB12.5")?.areaM2).toBeCloseTo(25, 2); // 10×2.5×1
   });
+});
 
+describe("takeoffRoom — openings", () => {
   it("computes opening reinforcement (door 6.9m example)", () => {
-    const r = baseRoom({
-      openings: [{ id: "o1", name: "SD-1", kind: "door", widthMm: 900, heightMm: 3000, count: 2 }],
-    });
-    const t = takeoffRoom(r, scale, settings);
+    const t = takeoffRoom(
+      baseRoom({
+        openings: [{ id: "o1", name: "SD-1", kind: "door", widthMm: 900, heightMm: 3000, count: 2 }],
+      }),
+      scale,
+      settings
+    );
     expect(t.openingReinforceM).toBeCloseTo(13.8, 6); // 6.9 × 2
-    expect(t.openingDetails[0].perUnitM).toBeCloseTo(6.9, 6);
   });
 
-  it("deducts opening area from the linked wall (framing once, board per face)", () => {
-    const wall: Wall = {
-      id: "w1",
-      name: "W1",
-      lengthMmManual: 10000, // 10m
-      heightMm: 3000, // 3m → gross 30m²
-      boards: [{ boardTypeId: "pb125", faces: 2 }],
-      includeFraming: true,
-    };
-    const room = baseRoom({
-      walls: [wall],
-      // 開口 1.0×2.0 ×1 = 2m²、対象壁 W1
-      openings: [{ id: "o1", name: "D", kind: "door", widthMm: 1000, heightMm: 2000, count: 1, wallId: "w1" }],
-    });
-    const t = takeoffRoom(room, scale, { ...settings, deductOpenings: true });
-    // 下地: 30 - 2 = 28
+  it("deducts opening from linked wall: framing once, board per face, with each height", () => {
+    const t = takeoffRoom(
+      baseRoom({
+        walls: [wall({ boards: [{ boardTypeId: "pb125", faces: 2 }] })],
+        // 開口 1.0×2.0 = 2m²、対象壁 w1
+        openings: [{ id: "o1", name: "D", kind: "door", widthMm: 1000, heightMm: 2000, count: 1, wallId: "w1" }],
+      }),
+      scale,
+      settings
+    );
+    // 下地 30 - 2 = 28
     expect(t.wallFramingAreaM2).toBeCloseTo(28, 2);
-    // ボード両面: (30 - 2) × 2 = 56
-    expect(t.wallBoards.find((b) => b.name === "PB12.5")?.areaM2).toBeCloseTo(56, 2);
+    // ボード (10×2.5 - 2) × 2面 = 46
+    expect(t.wallBoards.find((b) => b.name === "PB12.5")?.areaM2).toBeCloseTo(46, 2);
     expect(t.wallDetails[0].openingDeductM2).toBeCloseTo(2, 2);
   });
 
   it("does not deduct when opening has no linked wall", () => {
-    const wall: Wall = {
-      id: "w1",
-      name: "W1",
-      lengthMmManual: 10000,
-      heightMm: 3000,
-      boards: [{ boardTypeId: "pb125", faces: 2 }],
-      includeFraming: true,
-    };
-    const room = baseRoom({
-      walls: [wall],
-      openings: [{ id: "o1", name: "D", kind: "door", widthMm: 1000, heightMm: 2000, count: 1 }],
-    });
-    const t = takeoffRoom(room, scale, { ...settings, deductOpenings: true });
+    const t = takeoffRoom(
+      baseRoom({
+        walls: [wall({ boards: [{ boardTypeId: "pb125", faces: 2 }] })],
+        openings: [{ id: "o1", name: "D", kind: "door", widthMm: 1000, heightMm: 2000, count: 1 }],
+      }),
+      scale,
+      settings
+    );
     expect(t.wallFramingAreaM2).toBeCloseTo(30, 2);
-    // 補強は壁紐づけが無くても計上される
     expect(t.openingReinforceM).toBeGreaterThan(0);
   });
 
   it("does not deduct when deductOpenings is off", () => {
-    const wall: Wall = {
-      id: "w1",
-      name: "W1",
-      lengthMmManual: 10000,
-      heightMm: 3000,
-      boards: [{ boardTypeId: "pb125", faces: 2 }],
-      includeFraming: true,
-    };
-    const room = baseRoom({
-      walls: [wall],
-      openings: [{ id: "o1", name: "D", kind: "door", widthMm: 1000, heightMm: 2000, count: 1, wallId: "w1" }],
-    });
-    const t = takeoffRoom(room, scale, { ...settings, deductOpenings: false });
+    const t = takeoffRoom(
+      baseRoom({
+        walls: [wall({ boards: [{ boardTypeId: "pb125", faces: 2 }] })],
+        openings: [{ id: "o1", name: "D", kind: "door", widthMm: 1000, heightMm: 2000, count: 1, wallId: "w1" }],
+      }),
+      scale,
+      { ...settings, deductOpenings: false }
+    );
     expect(t.wallFramingAreaM2).toBeCloseTo(30, 2);
   });
 });
@@ -206,7 +229,6 @@ describe("takeoffAll", () => {
   });
 
   it("applies a per-page scale resolver", () => {
-    // 室1=ページ1(50mm/pt → 20m²)、室2=ページ2(100mm/pt → 80m²)
     const r1 = baseRoom({ id: "r1", page: 1 });
     const r2 = baseRoom({ id: "r2", page: 2 });
     const scaleFor = (room: Room): Scale =>

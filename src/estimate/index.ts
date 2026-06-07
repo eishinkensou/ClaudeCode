@@ -4,5 +4,6 @@ export {
   takeoffRoom,
   ceilingAreaM2,
   wallLengthM,
+  wallHeightsMm,
   openingReinforcePerUnit,
 } from "./takeoff";

@@ -154,7 +154,8 @@ export default function App() {
       id: newId("w"),
       name: "W?",
       segment: { a, b },
-      heightMm: settings.defaultWallHeightMm,
+      framingReach: "slab",
+      boardReach: "ceiling",
       boards: [],
       includeFraming: true,
     };
@@ -189,7 +190,8 @@ export default function App() {
             id: newId("w"),
             name: `W${r.walls.length + i + 1}`,
             segment: { a: p, b: q },
-            heightMm: settings.defaultWallHeightMm,
+            framingReach: "slab" as const,
+            boardReach: "ceiling" as const,
             boards: [],
             includeFraming: true,
           };

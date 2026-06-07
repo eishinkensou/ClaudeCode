@@ -11,12 +11,12 @@ export default function SettingsPanel({ settings, onChange }: Props) {
     <div className="panel">
       <div className="section-title">既定値・算定設定</div>
       <div className="spec-grid">
-        <label>既定の壁高さ</label>
+        <label>既定のスラブ高さ(階高)</label>
         <span>
           <input
             type="number"
-            value={settings.defaultWallHeightMm}
-            onChange={(e) => set({ defaultWallHeightMm: Number(e.target.value) })}
+            value={settings.defaultSlabHeightMm}
+            onChange={(e) => set({ defaultSlabHeightMm: Number(e.target.value) })}
           />{" "}
           mm
         </span>

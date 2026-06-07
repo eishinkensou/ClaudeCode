@@ -20,6 +20,7 @@ export function resultToCsv(result: TakeoffResult): string {
     }
     rows.push([r.roomName, "壁下地", "", f2(r.wallFramingAreaM2), "m2", ""].map(esc).join(","));
     for (const w of r.wallDetails) {
+      const reach = w.boardReach === "slab" ? "スラブ" : "天井下";
       for (const b of w.boards) {
         rows.push(
           [
@@ -28,7 +29,7 @@ export function resultToCsv(result: TakeoffResult): string {
             b.name,
             f2(b.areaM2),
             "m2",
-            `${w.name} ${f2(w.lengthM)}×${f2(w.heightM)}×${b.faces}面`,
+            `${w.name} ${f2(w.lengthM)}×${f2(w.boardHeightM)}(${reach})×${b.faces}面`,
           ]
             .map(esc)
             .join(",")

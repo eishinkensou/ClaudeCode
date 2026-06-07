@@ -5,6 +5,7 @@ interface Props {
 }
 
 const f2 = (n: number) => n.toFixed(2);
+const reachLabel = (r: "slab" | "ceiling") => (r === "slab" ? "スラブ" : "天井");
 
 function TypedRows({ items, unit = "m²" }: { items: TypedArea[]; unit?: string }) {
   if (items.length === 0) return <span className="hint">―</span>;
@@ -119,9 +120,8 @@ export default function ResultsTable({ result }: Props) {
                 <tr>
                   <th>壁</th>
                   <th>延長</th>
-                  <th>高さ</th>
+                  <th>下地（高さ→㎡）</th>
                   <th>開口控除</th>
-                  <th>下地</th>
                   <th>ボード（根拠）</th>
                 </tr>
               </thead>
@@ -130,11 +130,14 @@ export default function ResultsTable({ result }: Props) {
                   <tr key={i}>
                     <td>{w.name}</td>
                     <td className="num">{f2(w.lengthM)}m</td>
-                    <td className="num">{f2(w.heightM)}m</td>
+                    <td className="num">
+                      {reachLabel(w.framingReach)}H{f2(w.framingHeightM)}
+                      <br />
+                      {f2(w.framingAreaM2)}m²
+                    </td>
                     <td className="num">
                       {w.openingDeductM2 > 0 ? `−${f2(w.openingDeductM2)}m²` : "―"}
                     </td>
-                    <td className="num">{f2(w.framingAreaM2)}m²</td>
                     <td className="hint">
                       {w.boards.length === 0
                         ? "―"
@@ -142,9 +145,13 @@ export default function ResultsTable({ result }: Props) {
                             .map((b) => {
                               const base =
                                 w.openingDeductM2 > 0
-                                  ? `(${f2(w.grossAreaM2)}−${f2(w.openingDeductM2)})×${b.faces}面`
-                                  : `${f2(w.lengthM)}×${f2(w.heightM)}×${b.faces}面`;
-                              return `${b.name} ${f2(b.areaM2)}m²(${base})`;
+                                  ? `(${f2(w.lengthM)}×${f2(w.boardHeightM)}−${f2(
+                                      w.openingDeductM2
+                                    )})×${b.faces}面`
+                                  : `${f2(w.lengthM)}×${f2(w.boardHeightM)}×${b.faces}面`;
+                              return `${b.name} ${f2(b.areaM2)}m² [${reachLabel(
+                                w.boardReach
+                              )}](${base})`;
                             })
                             .join(" / ")}
                     </td>

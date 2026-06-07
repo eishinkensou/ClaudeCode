@@ -34,6 +34,23 @@ export function wallLengthM(wall: Wall, scale: Scale): number {
   return (wall.lengthMmManual ?? 0) / 1000;
 }
 
+/**
+ * 壁の下地高さ・ボード高さ（mm）を解決する。
+ * 明示指定があれば優先、無ければ到達先（スラブ/天井）と室の高さから算出。
+ */
+export function wallHeightsMm(
+  wall: Wall,
+  room: Room,
+  settings: AppSettings
+): { framingHeightMm: number; boardHeightMm: number } {
+  const slabH = room.slabHeightMm ?? settings.defaultSlabHeightMm;
+  const ceilH = room.ceilingHeightMm ?? settings.defaultCeilingHeightMm;
+  const framingHeightMm =
+    wall.framingHeightMm ?? (wall.framingReach === "slab" ? slabH : ceilH);
+  const boardHeightMm = wall.boardHeightMm ?? (wall.boardReach === "slab" ? slabH : ceilH);
+  return { framingHeightMm, boardHeightMm };
+}
+
 /** 開口1か所あたりの補強延長（m）と算定式 */
 export function openingReinforcePerUnit(
   kind: "door" | "window",
@@ -117,18 +134,24 @@ export function takeoffRoom(
 
   for (const wall of room.walls) {
     const lenM = wallLengthM(wall, scale);
-    const hM = (wall.heightMm ?? settings.defaultWallHeightMm) / 1000;
-    const grossArea = lenM * hM;
-    // この壁の開口控除面積（1面あたり）。壁面積を超えない範囲で控除。
-    const deductM2 = Math.min(grossArea, openAreaByWall.get(wall.id) ?? 0);
-    const netArea = grossArea - deductM2;
-    const framingArea = wall.includeFraming ? netArea : 0;
+    const { framingHeightMm, boardHeightMm } = wallHeightsMm(wall, room, settings);
+    const framingH = framingHeightMm / 1000;
+    const boardH = boardHeightMm / 1000;
+    const grossFraming = lenM * framingH;
+    const grossBoardPerFace = lenM * boardH;
+    const openArea = openAreaByWall.get(wall.id) ?? 0;
+    // 開口控除（それぞれの高さの面積を超えない範囲で控除）
+    const deductFraming = Math.min(grossFraming, openArea);
+    const deductBoard = Math.min(grossBoardPerFace, openArea);
+
+    const framingArea = wall.includeFraming ? grossFraming - deductFraming : 0;
+    const netBoardPerFace = grossBoardPerFace - deductBoard;
 
     // ボードは面数ぶん控除（両面なら開口も両面ぶん）
     const boards = wall.boards.map((b) => ({
       name: boardName(b.boardTypeId),
       faces: b.faces,
-      areaM2: round2(netArea * b.faces),
+      areaM2: round2(netBoardPerFace * b.faces),
     }));
 
     wallFramingAreaM2 += framingArea;
@@ -139,10 +162,12 @@ export function takeoffRoom(
     wallDetails.push({
       name: wall.name,
       lengthM: round2(lenM),
-      heightM: round2(hM),
-      grossAreaM2: round2(grossArea),
-      openingDeductM2: round2(deductM2),
+      framingReach: wall.framingReach,
+      framingHeightM: round2(framingH),
       framingAreaM2: round2(framingArea),
+      boardReach: wall.boardReach,
+      boardHeightM: round2(boardH),
+      openingDeductM2: round2(deductBoard),
       boards,
     });
   }

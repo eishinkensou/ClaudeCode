@@ -11,7 +11,7 @@ export const DEFAULT_BOARD_TYPES: BoardType[] = [
 
 /** 既定の設定値。一般値なので物件の仕様書に合わせて調整すること。 */
 export const DEFAULT_SETTINGS: AppSettings = {
-  defaultWallHeightMm: 2700,
+  defaultSlabHeightMm: 4000,
   defaultCeilingHeightMm: 2700,
   deductOpenings: true,
   boardTypes: DEFAULT_BOARD_TYPES,

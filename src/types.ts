@@ -58,8 +58,14 @@ export interface Wall {
   segment?: Segment;
   /** 手入力の延長（mm）。segment が無いときに使用。 */
   lengthMmManual?: number;
-  /** 壁高さ（mm）。未指定なら設定の既定値。 */
-  heightMm?: number;
+  /** 下地（軽鉄）の到達先：スラブまで（階高）／天井まで */
+  framingReach: "slab" | "ceiling";
+  /** ボードの到達先：天井下まで／スラブまで */
+  boardReach: "slab" | "ceiling";
+  /** 下地高さの明示指定（mm）。指定時は reach より優先。未指定なら室の高さ＋reachで算出。 */
+  framingHeightMm?: number;
+  /** ボード高さの明示指定（mm）。指定時は reach より優先。 */
+  boardHeightMm?: number;
   /** 壁ボード（重ね貼り・複数種類） */
   boards: WallBoardLayer[];
   /** 壁下地（軽量鉄骨下地）を計上するか */
@@ -93,8 +99,10 @@ export interface Room {
   polygon: Point[];
   /** 手入力の天井面積（m²）。polygon が空のとき使用。 */
   ceilingAreaM2Manual?: number;
-  /** 天井高（mm・参考/根拠表示用） */
+  /** 天井高（mm・参考/根拠表示用、ボードが天井下までの場合の高さ） */
   ceilingHeightMm?: number;
+  /** スラブ下端までの高さ＝階高相当（mm・下地/ボードがスラブまでの場合の高さ） */
+  slabHeightMm?: number;
   /** 天井ボード（重ね貼り） */
   ceilingBoards: CeilingBoardLayer[];
   /** 天井下地を計上するか */
@@ -125,8 +133,8 @@ export interface PageExtract {
 // ───────────────────────── 設定 ─────────────────────────
 
 export interface AppSettings {
-  /** 既定の壁高さ（mm） */
-  defaultWallHeightMm: number;
+  /** 既定のスラブ高さ＝階高（mm・壁下地/ボードがスラブまでの場合） */
+  defaultSlabHeightMm: number;
   /** 既定の天井高（mm） */
   defaultCeilingHeightMm: number;
   /** 壁下地・壁ボード面積から開口面積を差し引くか（既定: 差し引かない） */
@@ -148,13 +156,16 @@ export interface TypedArea {
 export interface WallDetail {
   name: string;
   lengthM: number;
-  heightM: number;
-  /** 開口控除前の壁面積 m²（延長×高さ） */
-  grossAreaM2: number;
-  /** この壁で控除した開口面積 m²（1面あたり） */
-  openingDeductM2: number;
+  /** 下地の到達先と高さ */
+  framingReach: "slab" | "ceiling";
+  framingHeightM: number;
   /** 開口控除後の壁下地面積 m² */
   framingAreaM2: number;
+  /** ボードの到達先と高さ */
+  boardReach: "slab" | "ceiling";
+  boardHeightM: number;
+  /** この壁で控除した開口面積 m²（1面あたり） */
+  openingDeductM2: number;
   /** この壁のボード（種類名・面数・控除後面積） */
   boards: { name: string; faces: number; areaM2: number }[];
 }
