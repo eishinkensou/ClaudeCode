@@ -213,7 +213,7 @@ const nextId = () => `r${Date.now().toString(36)}_${roomSeq++}`;
  * 内部のテキスト（部屋名らしきもの）を名前に採用する。
  * 壁・開口・ボード種類は利用者が画面で設定する。
  */
-function rectsToRooms(rects: Point[][], texts: TextItem[]): Room[] {
+function rectsToRooms(rects: Point[][], texts: TextItem[], pageNumber: number): Room[] {
   const rooms: Room[] = [];
   for (const poly of rects) {
     const inside = texts.filter((t) => pointInPolygon({ x: t.x, y: t.y }, poly));
@@ -229,6 +229,7 @@ function rectsToRooms(rects: Point[][], texts: TextItem[]): Room[] {
     rooms.push({
       id: nextId(),
       name: nameText ? nameText.str.trim() : `室${rooms.length + 1}`,
+      page: pageNumber,
       color: roomColor(rooms.length),
       polygon: poly,
       ceilingBoards: [],
@@ -259,7 +260,7 @@ export async function extractPage(page: PdfPage, pageNumber: number): Promise<Pa
   });
 
   const detectedScale = detectScaleFromTexts(texts);
-  const rooms = rectsToRooms(rects, texts);
+  const rooms = rectsToRooms(rects, texts, pageNumber);
 
   return {
     pageNumber,

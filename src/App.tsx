@@ -13,6 +13,7 @@ import ResultsTable from "./components/ResultsTable";
 
 let seq = 0;
 const newId = (p = "m") => `${p}${Date.now().toString(36)}_${seq++}`;
+const DEFAULT_SCALE = scaleFromDenominator(100);
 
 type Tab = "rooms" | "boards" | "settings" | "results";
 
@@ -21,8 +22,11 @@ export default function App() {
   const [numPages, setNumPages] = useState(0);
   const [pageIndex, setPageIndex] = useState(1);
   const [page, setPage] = useState<PdfPage | null>(null);
+  // 室は全ページ通して保持（room.page でどのページのジオメトリか区別）
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [scale, setScale] = useState<Scale>(scaleFromDenominator(100));
+  // 縮尺はページごと
+  const [scales, setScales] = useState<Record<number, Scale>>({});
+  const [detectedPages, setDetectedPages] = useState<Set<number>>(new Set());
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [renderScale, setRenderScale] = useState(1.3);
   const [mode, setMode] = useState<ViewerMode>("select");
@@ -32,28 +36,34 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const result = useMemo(() => takeoffAll(rooms, scale, settings), [rooms, scale, settings]);
+  const currentScale = scales[pageIndex] ?? DEFAULT_SCALE;
 
-  const loadAndExtract = useCallback(
-    async (document: PdfDocument, idx: number, autoScale: boolean) => {
+  // 室ごとに自ページの縮尺で拾い出し、全ページ合算
+  const result = useMemo(
+    () => takeoffAll(rooms, (room) => scales[room.page] ?? DEFAULT_SCALE, settings),
+    [rooms, scales, settings]
+  );
+
+  const loadPage = useCallback(
+    async (document: PdfDocument, idx: number, detect: boolean) => {
       setBusy(true);
       try {
         const p = await document.getPage(idx);
         setPage(p);
-        const ex = await extractPage(p, idx);
-        setRooms(ex.rooms);
-        setSelectedRoomId(ex.rooms[0]?.id ?? null);
-        setMode("select");
-        if (autoScale) {
-          if (ex.detectedScale) {
-            setScale(ex.detectedScale);
-            setStatus(`自動検出: 縮尺 ${ex.detectedScale.label}、室 ${ex.rooms.length}件`);
-          } else {
-            setStatus(`室 ${ex.rooms.length}件を検出（縮尺は未検出のため要校正）`);
-          }
-        } else {
-          setStatus(`ページ${idx}: 室 ${ex.rooms.length}件`);
+        if (detect) {
+          const ex = await extractPage(p, idx);
+          // このページの室を入れ替え（他ページの室は保持）
+          setRooms((prev) => [...prev.filter((r) => r.page !== idx), ...ex.rooms]);
+          setScales((prev) => ({ ...prev, [idx]: ex.detectedScale ?? prev[idx] ?? DEFAULT_SCALE }));
+          setDetectedPages((prev) => new Set(prev).add(idx));
+          setSelectedRoomId(ex.rooms[0]?.id ?? null);
+          setStatus(
+            ex.detectedScale
+              ? `P${idx}: 縮尺 ${ex.detectedScale.label}、室 ${ex.rooms.length}件を検出`
+              : `P${idx}: 室 ${ex.rooms.length}件を検出（縮尺は要校正）`
+          );
         }
+        setMode("select");
       } catch (e) {
         setStatus(`解析エラー: ${(e as Error).message}`);
       } finally {
@@ -74,7 +84,10 @@ export default function App() {
       setDoc(d);
       setNumPages(d.numPages);
       setPageIndex(1);
-      await loadAndExtract(d, 1, true);
+      setRooms([]);
+      setScales({});
+      setDetectedPages(new Set());
+      await loadPage(d, 1, true);
     } catch (err) {
       setStatus(`PDF読み込み失敗: ${(err as Error).message}`);
       setBusy(false);
@@ -84,7 +97,17 @@ export default function App() {
   const gotoPage = async (idx: number) => {
     if (!doc || idx < 1 || idx > numPages) return;
     setPageIndex(idx);
-    await loadAndExtract(doc, idx, false);
+    await loadPage(doc, idx, !detectedPages.has(idx));
+  };
+
+  const redetect = () => doc && loadPage(doc, pageIndex, true);
+
+  // 室を選択（別ページの室ならそのページへ移動）
+  const selectRoom = (id: string | null) => {
+    setSelectedRoomId(id);
+    if (!id) return;
+    const r = rooms.find((x) => x.id === id);
+    if (r && r.page !== pageIndex) gotoPage(r.page);
   };
 
   const updateRoom = (id: string, patch: Partial<Room>) =>
@@ -100,6 +123,7 @@ export default function App() {
   const emptyRoom = (name: string, polygon: Point[]): Room => ({
     id: newId("room"),
     name,
+    page: pageIndex,
     color: roomColor(rooms.length),
     polygon,
     ceilingAreaM2Manual: polygon.length >= 3 ? undefined : 0,
@@ -136,8 +160,10 @@ export default function App() {
     };
     setRooms((rs) => {
       let targetId = selectedRoomId;
+      // 選択中の室が他ページなら、当ページに新規室を作る
+      const sel = rs.find((r) => r.id === targetId);
       let next = rs;
-      if (!targetId) {
+      if (!sel || sel.page !== pageIndex) {
         const room = emptyRoom(`室${rs.length + 1}`, []);
         next = [...rs, room];
         targetId = room.id;
@@ -181,17 +207,18 @@ export default function App() {
     }
     const mm = Number(input);
     if (mm > 0) {
-      setScale(scaleFromTwoPoints(a, b, mm));
-      setStatus(`2点校正で縮尺を設定しました（${mm}mm）`);
+      setScales((prev) => ({ ...prev, [pageIndex]: scaleFromTwoPoints(a, b, mm) }));
+      setStatus(`P${pageIndex}: 2点校正で縮尺を設定（${mm}mm）`);
     }
     setMode("select");
   };
 
   const setDenom = (denom: number) => {
-    if (denom > 0) setScale(scaleFromDenominator(denom));
+    if (denom > 0) setScales((prev) => ({ ...prev, [pageIndex]: scaleFromDenominator(denom) }));
   };
 
   const hasDoc = !!doc && !!page;
+  const pageRooms = rooms.filter((r) => r.page === pageIndex);
 
   return (
     <div className="app">
@@ -232,15 +259,16 @@ export default function App() {
 
             <div className="sep" />
             <div className="group">
-              <span className="hint">縮尺</span>
-              <span>{scale.label}</span>
+              <span className="hint">縮尺(P{pageIndex})</span>
+              <span>{currentScale.label}</span>
               <span className="hint">1/</span>
               <input
                 type="number"
                 style={{ width: 60 }}
                 defaultValue={100}
+                key={pageIndex}
                 onBlur={(e) => setDenom(Number(e.target.value))}
-                title="縮尺分母（PDFが正寸の場合）"
+                title="このページの縮尺分母（PDFが正寸の場合）"
               />
               <button
                 className={mode === "calibrate" ? "active" : ""}
@@ -265,10 +293,11 @@ export default function App() {
               >
                 壁を描く
               </button>
-              <button onClick={() => doc && loadAndExtract(doc, pageIndex, true)}>再自動検出</button>
+              <button onClick={redetect}>再自動検出</button>
             </div>
 
             <span className="spacer" />
+            <span className="hint">全{rooms.length}室</span>
             <button className="primary" disabled={rooms.length === 0} onClick={() => downloadCsv(result)}>
               CSV出力
             </button>
@@ -282,7 +311,7 @@ export default function App() {
           <button onClick={() => setMode("select")}>キャンセル</button>
         </div>
       )}
-      {mode === "draw-ceiling" && <div className="banner info">天井作図: ドラッグで矩形を描いてください（新しい室になります）。</div>}
+      {mode === "draw-ceiling" && <div className="banner info">天井作図: ドラッグで矩形を描いてください（このページの新しい室になります）。</div>}
       {mode === "draw-wall" && (
         <div className="banner info">
           壁作図: 始点と終点をクリック。
@@ -297,10 +326,10 @@ export default function App() {
             <PdfViewer
               page={page!}
               renderScale={renderScale}
-              rooms={rooms}
+              rooms={pageRooms}
               mode={mode}
               selectedRoomId={selectedRoomId}
-              onSelectRoom={setSelectedRoomId}
+              onSelectRoom={selectRoom}
               onCalibrate={onCalibrate}
               onAddCeiling={addCeiling}
               onAddWall={addWall}
@@ -309,7 +338,9 @@ export default function App() {
             <div className="empty" style={{ marginTop: 80 }}>
               {busy ? "処理中…" : "「PDFを開く」から図面を読み込んでください。"}
               <br />
-              <span className="hint">ベクター（CADエクスポート）PDFで自動検出の精度が高くなります。</span>
+              <span className="hint">
+                天井は天伏図ページ、壁は平面図ページで拾えます（ページをまたいで合算）。
+              </span>
             </div>
           )}
         </div>
@@ -334,9 +365,11 @@ export default function App() {
             <RoomPanel
               rooms={rooms}
               selectedRoomId={selectedRoomId}
-              scale={scale}
+              currentPage={pageIndex}
+              scale={currentScale}
+              scales={scales}
               settings={settings}
-              onSelectRoom={setSelectedRoomId}
+              onSelectRoom={selectRoom}
               onChangeRoom={updateRoom}
               onDeleteRoom={deleteRoom}
               onAddRoom={addRoom}

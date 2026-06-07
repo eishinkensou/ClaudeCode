@@ -116,6 +116,8 @@ input[type="number"] { width: 72px; }
 .room-tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; border: 1px solid rgba(0,0,0,.2); }
 .color-pick { width: 32px; height: 28px; padding: 0; border-radius: 6px; }
+.pg { font-size: 10px; color: var(--accent); margin-left: 4px; font-weight: 600; }
+.pg.other { color: var(--muted); }
 .room-editor fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; padding: 8px 10px; }
 .room-editor legend { font-weight: 700; padding: 0 6px; color: var(--accent); }
 .fld { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }

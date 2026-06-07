@@ -14,7 +14,9 @@ import { roomColor } from "../colors";
 interface Props {
   rooms: Room[];
   selectedRoomId: string | null;
+  currentPage: number;
   scale: Scale;
+  scales: Record<number, Scale>;
   settings: AppSettings;
   onSelectRoom: (id: string | null) => void;
   onChangeRoom: (id: string, patch: Partial<Room>) => void;
@@ -27,9 +29,11 @@ let uid = 0;
 const nid = (p: string) => `${p}${Date.now().toString(36)}${uid++}`;
 
 export default function RoomPanel(props: Props) {
-  const { rooms, selectedRoomId, scale, settings } = props;
+  const { rooms, selectedRoomId, scale, scales, currentPage, settings } = props;
   const room = rooms.find((r) => r.id === selectedRoomId) ?? null;
   const bt = settings.boardTypes;
+  // 選択室はその室のページの縮尺で表示
+  const roomScale = room ? scales[room.page] ?? scale : scale;
 
   const patch = (p: Partial<Room>) => room && props.onChangeRoom(room.id, p);
 
@@ -46,10 +50,11 @@ export default function RoomPanel(props: Props) {
             key={r.id}
             className={r.id === selectedRoomId ? "room-tab active" : "room-tab"}
             onClick={() => props.onSelectRoom(r.id)}
-            title={r.source === "auto" ? "自動検出" : "手動"}
+            title={`${r.source === "auto" ? "自動検出" : "手動"} / P${r.page}`}
           >
             <span className="swatch" style={{ background: r.color ?? roomColor(i) }} />
             {r.name}
+            <span className={r.page === currentPage ? "pg" : "pg other"}>P{r.page}</span>
           </button>
         ))}
       </div>
@@ -93,8 +98,8 @@ export default function RoomPanel(props: Props) {
               <label>天井面積</label>
               {room.polygon.length >= 3 ? (
                 <span className="readout">
-                  {ceilingAreaM2(room, scale).toFixed(2)} m²
-                  <span className="hint"> （図面から自動）</span>
+                  {ceilingAreaM2(room, roomScale).toFixed(2)} m²
+                  <span className="hint"> （P{room.page}図面から自動）</span>
                 </span>
               ) : (
                 <>
@@ -176,7 +181,7 @@ export default function RoomPanel(props: Props) {
                 key={wall.id}
                 wall={wall}
                 index={i}
-                scale={scale}
+                scale={roomScale}
                 settings={settings}
                 onChange={(w) => {
                   const next = [...room.walls];

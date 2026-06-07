@@ -162,13 +162,17 @@ export function takeoffRoom(
   };
 }
 
-/** 全室を拾い出して合計も出す */
+/**
+ * 全室を拾い出して合計も出す。
+ * scale は単一の縮尺、または室ごとに縮尺を返す関数（ページ別縮尺）を受け取れる。
+ */
 export function takeoffAll(
   rooms: Room[],
-  scale: Scale,
+  scale: Scale | ((room: Room) => Scale),
   settings: AppSettings
 ): TakeoffResult {
-  const roomResults = rooms.map((r) => takeoffRoom(r, scale, settings));
+  const scaleFor = typeof scale === "function" ? scale : () => scale;
+  const roomResults = rooms.map((r) => takeoffRoom(r, scaleFor(r), settings));
 
   const ceilingBoards: TypedArea[] = [];
   const wallBoards: TypedArea[] = [];

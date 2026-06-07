@@ -34,6 +34,7 @@ function baseRoom(over: Partial<Room> = {}): Room {
   return {
     id: "r1",
     name: "事務所",
+    page: 1,
     polygon,
     ceilingBoards: [],
     includeCeiling: true,
@@ -202,5 +203,18 @@ describe("takeoffAll", () => {
     const res = takeoffAll([r, { ...r, id: "r2" }], scale, settings);
     expect(res.totals.ceilingFramingAreaM2).toBeCloseTo(40, 2);
     expect(res.totals.ceilingBoards.find((b) => b.name === "PB9.5")?.areaM2).toBeCloseTo(40, 2);
+  });
+
+  it("applies a per-page scale resolver", () => {
+    // 室1=ページ1(50mm/pt → 20m²)、室2=ページ2(100mm/pt → 80m²)
+    const r1 = baseRoom({ id: "r1", page: 1 });
+    const r2 = baseRoom({ id: "r2", page: 2 });
+    const scaleFor = (room: Room): Scale =>
+      room.page === 1
+        ? { realMmPerPt: 50, label: "p1", source: "default" }
+        : { realMmPerPt: 100, label: "p2", source: "default" };
+    const res = takeoffAll([r1, r2], scaleFor, settings);
+    // 100×80pt → p1: 20m², p2: 80m² → 合計100m²
+    expect(res.totals.ceilingFramingAreaM2).toBeCloseTo(100, 1);
   });
 });

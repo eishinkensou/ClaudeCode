@@ -83,6 +83,8 @@ export interface Opening {
 export interface Room {
   id: string;
   name: string;
+  /** この室のジオメトリ（天井ポリゴン・壁）が属するPDFページ番号 */
+  page: number;
   /** 図面上の塗り分け色（部屋ごと） */
   color?: string;
 
