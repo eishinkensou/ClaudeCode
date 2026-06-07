@@ -86,7 +86,8 @@ export default function App() {
       setStatus(`図面を準備中…（${targets.length}枚）`);
       const images = [];
       for (const t of targets) {
-        const img = await renderPageToImage(doc, t.page, 2000);
+        // 小縮尺の寸法文字も読めるよう、Claudeの高解像度上限(長辺2576px)で描画
+        const img = await renderPageToImage(doc, t.page, 2576);
         images.push({ base64: img.base64, mediaType: img.mediaType, label: t.label, page: t.page });
       }
       setStatus(`AIが${targets.length}枚の図面を読み取り中…（枚数に応じて1〜3分ほど）`);
