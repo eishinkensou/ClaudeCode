@@ -66,7 +66,7 @@ export interface Wall {
   includeFraming: boolean;
 }
 
-/** 建具などの開口（開口補強の算定に使用） */
+/** 建具などの開口（開口補強の算定＋下地/ボードの開口控除に使用） */
 export interface Opening {
   id: string;
   /** 建具記号など（SD-1, AW-2 等） */
@@ -75,6 +75,8 @@ export interface Opening {
   widthMm: number;
   heightMm: number;
   count: number;
+  /** 控除対象の壁ID（この壁の下地・ボードから開口面積を差し引く）。未指定なら控除しない。 */
+  wallId?: string;
 }
 
 /** 室（拾い出しの基本単位）。天井＋壁＋開口を持つ。 */
@@ -143,8 +145,13 @@ export interface WallDetail {
   name: string;
   lengthM: number;
   heightM: number;
+  /** 開口控除前の壁面積 m²（延長×高さ） */
+  grossAreaM2: number;
+  /** この壁で控除した開口面積 m²（1面あたり） */
+  openingDeductM2: number;
+  /** 開口控除後の壁下地面積 m² */
   framingAreaM2: number;
-  /** この壁のボード（種類名・面数・面積） */
+  /** この壁のボード（種類名・面数・控除後面積） */
   boards: { name: string; faces: number; areaM2: number }[];
 }
 

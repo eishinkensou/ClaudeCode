@@ -42,7 +42,8 @@ export default function SettingsPanel({ settings, onChange }: Props) {
         </span>
       </div>
       <p className="hint" style={{ marginTop: 12 }}>
-        ※ 既定では開口を差し引かない総面積で拾います。仕様に応じて切り替えてください。
+        ※ 開口控除は既定でオンです。各開口で「対象壁」を選ぶと、その壁の下地・ボードから
+        開口面積を差し引きます（ボードは面数ぶん控除）。対象壁が未指定の開口は控除しません。
         面積拾いにロス率は掛けていません（材料数量へ換算する際に別途見込んでください）。
       </p>
     </div>

@@ -137,21 +137,62 @@ describe("takeoffRoom", () => {
     expect(t.openingDetails[0].perUnitM).toBeCloseTo(6.9, 6);
   });
 
-  it("deducts opening area from walls when enabled", () => {
+  it("deducts opening area from the linked wall (framing once, board per face)", () => {
+    const wall: Wall = {
+      id: "w1",
+      name: "W1",
+      lengthMmManual: 10000, // 10m
+      heightMm: 3000, // 3m → gross 30m²
+      boards: [{ boardTypeId: "pb125", faces: 2 }],
+      includeFraming: true,
+    };
+    const room = baseRoom({
+      walls: [wall],
+      // 開口 1.0×2.0 ×1 = 2m²、対象壁 W1
+      openings: [{ id: "o1", name: "D", kind: "door", widthMm: 1000, heightMm: 2000, count: 1, wallId: "w1" }],
+    });
+    const t = takeoffRoom(room, scale, { ...settings, deductOpenings: true });
+    // 下地: 30 - 2 = 28
+    expect(t.wallFramingAreaM2).toBeCloseTo(28, 2);
+    // ボード両面: (30 - 2) × 2 = 56
+    expect(t.wallBoards.find((b) => b.name === "PB12.5")?.areaM2).toBeCloseTo(56, 2);
+    expect(t.wallDetails[0].openingDeductM2).toBeCloseTo(2, 2);
+  });
+
+  it("does not deduct when opening has no linked wall", () => {
     const wall: Wall = {
       id: "w1",
       name: "W1",
       lengthMmManual: 10000,
       heightMm: 3000,
-      boards: [{ boardTypeId: "pb125", faces: 1 }],
+      boards: [{ boardTypeId: "pb125", faces: 2 }],
       includeFraming: true,
     };
     const room = baseRoom({
       walls: [wall],
-      openings: [{ id: "o1", name: "D", kind: "door", widthMm: 1000, heightMm: 2000, count: 1 }], // 2m²
+      openings: [{ id: "o1", name: "D", kind: "door", widthMm: 1000, heightMm: 2000, count: 1 }],
     });
-    const withDeduct = takeoffRoom(room, scale, { ...settings, deductOpenings: true });
-    expect(withDeduct.wallFramingAreaM2).toBeCloseTo(28, 2); // 30 - 2
+    const t = takeoffRoom(room, scale, { ...settings, deductOpenings: true });
+    expect(t.wallFramingAreaM2).toBeCloseTo(30, 2);
+    // 補強は壁紐づけが無くても計上される
+    expect(t.openingReinforceM).toBeGreaterThan(0);
+  });
+
+  it("does not deduct when deductOpenings is off", () => {
+    const wall: Wall = {
+      id: "w1",
+      name: "W1",
+      lengthMmManual: 10000,
+      heightMm: 3000,
+      boards: [{ boardTypeId: "pb125", faces: 2 }],
+      includeFraming: true,
+    };
+    const room = baseRoom({
+      walls: [wall],
+      openings: [{ id: "o1", name: "D", kind: "door", widthMm: 1000, heightMm: 2000, count: 1, wallId: "w1" }],
+    });
+    const t = takeoffRoom(room, scale, { ...settings, deductOpenings: false });
+    expect(t.wallFramingAreaM2).toBeCloseTo(30, 2);
   });
 });
 

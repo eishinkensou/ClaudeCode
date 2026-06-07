@@ -187,6 +187,7 @@ export default function RoomPanel(props: Props) {
               <OpeningCard
                 key={op.id}
                 op={op}
+                walls={room.walls}
                 onChange={(o) => {
                   const next = [...room.openings];
                   next[i] = o;
@@ -204,6 +205,7 @@ export default function RoomPanel(props: Props) {
                   widthMm: 900,
                   heightMm: room.ceilingHeightMm ?? settings.defaultWallHeightMm,
                   count: 1,
+                  wallId: room.walls[0]?.id,
                 };
                 patch({ openings: [...room.openings, op] });
               }}
@@ -211,7 +213,8 @@ export default function RoomPanel(props: Props) {
               ＋開口を追加
             </button>
             <p className="hint">
-              ドア＝2×高さ＋幅、窓＝2×高さ＋2×幅 で補強延長を算出します。
+              ドア＝2×高さ＋幅、窓＝2×高さ＋2×幅 で補強延長を算出。「対象壁」を選ぶと
+              その壁の下地・ボードから開口面積を控除します。
             </p>
           </fieldset>
         </div>
@@ -337,8 +340,13 @@ function WallCard(props: {
   );
 }
 
-function OpeningCard(props: { op: Opening; onChange: (o: Opening) => void; onDelete: () => void }) {
-  const { op } = props;
+function OpeningCard(props: {
+  op: Opening;
+  walls: Wall[];
+  onChange: (o: Opening) => void;
+  onDelete: () => void;
+}) {
+  const { op, walls } = props;
   const set = (p: Partial<Opening>) => props.onChange({ ...op, ...p });
   return (
     <div className="card">
@@ -362,6 +370,21 @@ function OpeningCard(props: { op: Opening; onChange: (o: Opening) => void; onDel
           value={op.count}
           onChange={(e) => set({ count: Number(e.target.value) })}
         />
+      </div>
+      <div className="fld">
+        <label>対象壁</label>
+        <select
+          value={op.wallId ?? ""}
+          onChange={(e) => set({ wallId: e.target.value || undefined })}
+        >
+          <option value="">控除なし</option>
+          {walls.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </select>
+        <span className="hint">この壁の下地・ボードから控除</span>
       </div>
     </div>
   );

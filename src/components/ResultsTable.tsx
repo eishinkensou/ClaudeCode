@@ -117,6 +117,7 @@ export default function ResultsTable({ result }: Props) {
                   <th>壁</th>
                   <th>延長</th>
                   <th>高さ</th>
+                  <th>開口控除</th>
                   <th>下地</th>
                   <th>ボード（根拠）</th>
                 </tr>
@@ -127,17 +128,21 @@ export default function ResultsTable({ result }: Props) {
                     <td>{w.name}</td>
                     <td className="num">{f2(w.lengthM)}m</td>
                     <td className="num">{f2(w.heightM)}m</td>
+                    <td className="num">
+                      {w.openingDeductM2 > 0 ? `−${f2(w.openingDeductM2)}m²` : "―"}
+                    </td>
                     <td className="num">{f2(w.framingAreaM2)}m²</td>
                     <td className="hint">
                       {w.boards.length === 0
                         ? "―"
                         : w.boards
-                            .map(
-                              (b) =>
-                                `${b.name} ${f2(b.areaM2)}m²(${f2(w.lengthM)}×${f2(
-                                  w.heightM
-                                )}×${b.faces}面)`
-                            )
+                            .map((b) => {
+                              const base =
+                                w.openingDeductM2 > 0
+                                  ? `(${f2(w.grossAreaM2)}−${f2(w.openingDeductM2)})×${b.faces}面`
+                                  : `${f2(w.lengthM)}×${f2(w.heightM)}×${b.faces}面`;
+                              return `${b.name} ${f2(b.areaM2)}m²(${base})`;
+                            })
                             .join(" / ")}
                     </td>
                   </tr>

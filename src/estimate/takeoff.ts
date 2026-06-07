@@ -91,11 +91,16 @@ export function takeoffRoom(
   const openingReinforceM = round2(
     openingDetails.reduce((s, d) => s + d.totalM, 0)
   );
-  // 開口控除に使う「開口面積合計（m²）」
-  const openingAreaM2 = room.openings.reduce(
-    (s, o) => s + (o.widthMm / 1000) * (o.heightMm / 1000) * o.count,
-    0
-  );
+
+  // 壁ごとの開口控除面積（m²/1面）。wallId が指定された開口のみ対象。
+  const openAreaByWall = new Map<string, number>();
+  if (settings.deductOpenings) {
+    for (const o of room.openings) {
+      if (!o.wallId) continue;
+      const a = (o.widthMm / 1000) * (o.heightMm / 1000) * o.count;
+      openAreaByWall.set(o.wallId, (openAreaByWall.get(o.wallId) ?? 0) + a);
+    }
+  }
 
   // ── 天井 ──
   const cArea = room.includeCeiling ? ceilingAreaM2(room, scale) : 0;
@@ -113,15 +118,18 @@ export function takeoffRoom(
   for (const wall of room.walls) {
     const lenM = wallLengthM(wall, scale);
     const hM = (wall.heightMm ?? settings.defaultWallHeightMm) / 1000;
-    let gross = lenM * hM;
-    // 開口控除（室の開口面積を壁全体に按分せず、壁面積から一律控除する簡易方式）
-    // ※既定では控除しない
-    const framingArea = wall.includeFraming ? gross : 0;
+    const grossArea = lenM * hM;
+    // この壁の開口控除面積（1面あたり）。壁面積を超えない範囲で控除。
+    const deductM2 = Math.min(grossArea, openAreaByWall.get(wall.id) ?? 0);
+    const netArea = grossArea - deductM2;
+    const framingArea = wall.includeFraming ? netArea : 0;
 
-    const boards = wall.boards.map((b) => {
-      let area = lenM * hM * b.faces;
-      return { name: boardName(b.boardTypeId), faces: b.faces, areaM2: round2(area) };
-    });
+    // ボードは面数ぶん控除（両面なら開口も両面ぶん）
+    const boards = wall.boards.map((b) => ({
+      name: boardName(b.boardTypeId),
+      faces: b.faces,
+      areaM2: round2(netArea * b.faces),
+    }));
 
     wallFramingAreaM2 += framingArea;
     mergeTyped(
@@ -132,17 +140,11 @@ export function takeoffRoom(
       name: wall.name,
       lengthM: round2(lenM),
       heightM: round2(hM),
+      grossAreaM2: round2(grossArea),
+      openingDeductM2: round2(deductM2),
       framingAreaM2: round2(framingArea),
       boards,
     });
-  }
-
-  // 開口控除（settings.deductOpenings = true のとき、室合計から差し引く）
-  if (settings.deductOpenings && openingAreaM2 > 0) {
-    wallFramingAreaM2 = Math.max(0, wallFramingAreaM2 - openingAreaM2);
-    for (const b of wallBoards) {
-      b.areaM2 = round2(Math.max(0, b.areaM2 - openingAreaM2));
-    }
   }
 
   return {

@@ -13,6 +13,6 @@ export const DEFAULT_BOARD_TYPES: BoardType[] = [
 export const DEFAULT_SETTINGS: AppSettings = {
   defaultWallHeightMm: 2700,
   defaultCeilingHeightMm: 2700,
-  deductOpenings: false,
+  deductOpenings: true,
   boardTypes: DEFAULT_BOARD_TYPES,
 };
