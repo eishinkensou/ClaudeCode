@@ -70,23 +70,33 @@ app.post("/api/analyze", async (req, res) => {
         (hint ? `\n\n補足情報: ${hint}` : ""),
     });
 
-    const message = await client.messages.stream({
-      model: MODEL,
-      max_tokens: 32000,
-      thinking: { type: "adaptive" },
-      output_config: {
-        effort: "high",
-        format: zodOutputFormat(Takeoff),
-      },
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content }],
-    });
-    const final = await message.finalMessage();
+    let final;
+    try {
+      const stream = client.messages.stream({
+        model: MODEL,
+        max_tokens: 48000,
+        thinking: { type: "adaptive" },
+        output_config: {
+          effort: "medium",
+          format: zodOutputFormat(Takeoff),
+        },
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content }],
+      });
+      final = await stream.finalMessage();
+    } catch (e) {
+      // 出力が長すぎて途中で切れた場合などはここに来ることがある
+      console.error("[analyze] stream/parse error:", e?.message);
+      return res.status(502).json({
+        error:
+          "出力が長すぎる/解析できませんでした。解析ページ数を減らすか、フロア・区画ごとに分けて解析してください（目安5〜8枚）。",
+      });
+    }
 
     if (final.stop_reason === "max_tokens") {
       return res.status(502).json({
         error:
-          "出力が長すぎて途中で切れました。解析ページ数を減らすか、フロア・図面種別ごとに分けて解析してください（目安5〜8枚）。",
+          "出力が上限に達して途中で切れました。解析ページ数を減らすか、フロア・区画ごとに分けて解析してください。",
         stop_reason: final.stop_reason,
       });
     }
@@ -125,6 +135,9 @@ app.post("/api/analyze", async (req, res) => {
 // 本番ビルド（dist/）を配信
 app.use(express.static("dist"));
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[api] listening on http://localhost:${PORT}  model=${MODEL}  key=${API_KEY ? "set" : "MISSING(mock)"}`);
 });
+// AI解析は数分かかることがあるため、リクエストのタイムアウトを無効化
+server.requestTimeout = 0;
+server.timeout = 0;

@@ -8,7 +8,13 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://localhost:8787",
+      // AI解析は数分かかることがあるため、プロキシのタイムアウトを長めに
+      "/api": {
+        target: "http://localhost:8787",
+        changeOrigin: true,
+        timeout: 600000,
+        proxyTimeout: 600000,
+      },
     },
   },
   worker: { format: "es" },
