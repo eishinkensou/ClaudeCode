@@ -2,6 +2,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import type { PDFPageProxy } from "pdfjs-dist";
 import type { PageExtract, Point, Scale, Segment, TextItem, Room } from "../types";
 import { detectRectangles, polygonArea, pointInPolygon, bbox } from "../geometry";
+import { roomColor } from "../colors";
 
 type PdfPage = PDFPageProxy;
 
@@ -228,6 +229,7 @@ function rectsToRooms(rects: Point[][], texts: TextItem[]): Room[] {
     rooms.push({
       id: nextId(),
       name: nameText ? nameText.str.trim() : `室${rooms.length + 1}`,
+      color: roomColor(rooms.length),
       polygon: poly,
       ceilingBoards: [],
       includeCeiling: true,

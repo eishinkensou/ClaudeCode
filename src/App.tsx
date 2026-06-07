@@ -3,6 +3,7 @@ import type { AppSettings, Point, Room, Scale, Wall } from "./types";
 import { loadPdf, type PdfDocument, type PdfPage } from "./pdf/loader";
 import { extractPage, scaleFromDenominator, scaleFromTwoPoints } from "./pdf/extract";
 import { takeoffAll, DEFAULT_SETTINGS } from "./estimate";
+import { roomColor } from "./colors";
 import { downloadCsv } from "./export/csv";
 import PdfViewer, { type ViewerMode } from "./components/PdfViewer";
 import RoomPanel from "./components/RoomPanel";
@@ -99,6 +100,7 @@ export default function App() {
   const emptyRoom = (name: string, polygon: Point[]): Room => ({
     id: newId("room"),
     name,
+    color: roomColor(rooms.length),
     polygon,
     ceilingAreaM2Manual: polygon.length >= 3 ? undefined : 0,
     ceilingBoards: [],

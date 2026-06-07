@@ -89,8 +89,11 @@ export default function ResultsTable({ result }: Props) {
         室別 拾い出し
       </div>
       {result.rooms.map((r) => (
-        <div className="room-result" key={r.roomId}>
-          <h4>{r.roomName}</h4>
+        <div className="room-result" key={r.roomId} style={r.color ? { borderLeftColor: r.color } : undefined}>
+          <h4 style={r.color ? { borderLeftColor: r.color } : undefined}>
+            {r.color && <span className="swatch" style={{ background: r.color }} />}
+            {r.roomName}
+          </h4>
 
           <div className="rr-line">
             <span className="rr-label">天井下地</span>

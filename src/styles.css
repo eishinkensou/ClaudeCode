@@ -114,7 +114,8 @@ input[type="number"] { width: 72px; }
 .room-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 12px; }
 .room-tab { font-size: 12px; padding: 4px 8px; position: relative; }
 .room-tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
-.room-tab .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ceiling); margin-left: 4px; vertical-align: middle; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; border: 1px solid rgba(0,0,0,.2); }
+.color-pick { width: 32px; height: 28px; padding: 0; border-radius: 6px; }
 .room-editor fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; padding: 8px 10px; }
 .room-editor legend { font-weight: 700; padding: 0 6px; color: var(--accent); }
 .fld { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }

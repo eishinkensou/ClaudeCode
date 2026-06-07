@@ -83,6 +83,8 @@ export interface Opening {
 export interface Room {
   id: string;
   name: string;
+  /** 図面上の塗り分け色（部屋ごと） */
+  color?: string;
 
   // ── 天井 ──
   /** 天井ポリゴン（pt）。面積はここから算出。空なら手入力面積を使う。 */
@@ -174,6 +176,7 @@ export interface OpeningDetail {
 export interface RoomTakeoff {
   roomId: string;
   roomName: string;
+  color?: string;
 
   ceilingFramingAreaM2: number;
   ceilingHeightMm?: number;

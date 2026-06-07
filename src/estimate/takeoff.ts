@@ -150,6 +150,7 @@ export function takeoffRoom(
   return {
     roomId: room.id,
     roomName: room.name,
+    color: room.color,
     ceilingFramingAreaM2,
     ceilingHeightMm: room.ceilingHeightMm,
     ceilingBoards,

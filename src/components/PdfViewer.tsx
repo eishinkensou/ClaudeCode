@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PageViewport } from "pdfjs-dist";
 import type { Point, Room } from "../types";
 import { renderPage, type PdfPage } from "../pdf/loader";
+import { roomColor } from "../colors";
 
 export type ViewerMode = "select" | "calibrate" | "draw-ceiling" | "draw-wall";
 
@@ -108,8 +109,9 @@ export default function PdfViewer(props: Props) {
         onMouseUp={onUp}
       >
         {vp &&
-          rooms.map((room) => {
+          rooms.map((room, idx) => {
             const selected = room.id === selectedRoomId;
+            const color = room.color ?? roomColor(idx);
             const pts = room.polygon.map(toScreen);
             const d =
               pts.length >= 3
@@ -120,14 +122,23 @@ export default function PdfViewer(props: Props) {
                 {d && (
                   <path
                     d={d}
-                    fill={CEIL}
-                    fillOpacity={selected ? 0.26 : 0.12}
-                    stroke={CEIL}
-                    strokeWidth={selected ? 2.5 : 1.5}
+                    fill={color}
+                    fillOpacity={selected ? 0.4 : 0.24}
+                    stroke={color}
+                    strokeWidth={selected ? 3 : 1.5}
                   />
                 )}
                 {pts[0] && (
-                  <text x={pts[0][0] + 4} y={pts[0][1] + 14} fontSize={12} fill={CEIL} fontWeight={700}>
+                  <text
+                    x={pts[0][0] + 4}
+                    y={pts[0][1] + 14}
+                    fontSize={12}
+                    fill={color}
+                    fontWeight={700}
+                    stroke="#fff"
+                    strokeWidth={0.6}
+                    paintOrder="stroke"
+                  >
                     {room.name}
                   </text>
                 )}

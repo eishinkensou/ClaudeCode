@@ -9,6 +9,7 @@ import type {
   WallBoardLayer,
 } from "../types";
 import { ceilingAreaM2, wallLengthM } from "../estimate";
+import { roomColor } from "../colors";
 
 interface Props {
   rooms: Room[];
@@ -40,14 +41,15 @@ export default function RoomPanel(props: Props) {
       </div>
 
       <div className="room-tabs">
-        {rooms.map((r) => (
+        {rooms.map((r, i) => (
           <button
             key={r.id}
             className={r.id === selectedRoomId ? "room-tab active" : "room-tab"}
             onClick={() => props.onSelectRoom(r.id)}
+            title={r.source === "auto" ? "自動検出" : "手動"}
           >
+            <span className="swatch" style={{ background: r.color ?? roomColor(i) }} />
             {r.name}
-            {r.source === "auto" && <span className="dot" title="自動検出" />}
           </button>
         ))}
       </div>
@@ -61,9 +63,16 @@ export default function RoomPanel(props: Props) {
         <div className="room-editor">
           <div className="fld">
             <label>室名</label>
-            <input value={room.name} onChange={(e) => patch({ name: e.target.value })} />
+            <input className="grow" value={room.name} onChange={(e) => patch({ name: e.target.value })} />
+            <input
+              type="color"
+              className="color-pick"
+              value={room.color ?? roomColor(rooms.indexOf(room))}
+              onChange={(e) => patch({ color: e.target.value })}
+              title="図面上の色"
+            />
             <button className="danger" onClick={() => props.onDeleteRoom(room.id)}>
-              室を削除
+              削除
             </button>
           </div>
 
