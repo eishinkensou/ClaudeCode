@@ -70,9 +70,9 @@ app.post("/api/analyze", async (req, res) => {
         (hint ? `\n\n補足情報: ${hint}` : ""),
     });
 
-    const message = await client.messages.parse({
+    const message = await client.messages.stream({
       model: MODEL,
-      max_tokens: 16000,
+      max_tokens: 32000,
       thinking: { type: "adaptive" },
       output_config: {
         effort: "high",
@@ -81,19 +81,36 @@ app.post("/api/analyze", async (req, res) => {
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content }],
     });
+    const final = await message.finalMessage();
 
-    if (!message.parsed_output) {
+    if (final.stop_reason === "max_tokens") {
       return res.status(502).json({
-        error: "AIの応答を解析できませんでした（安全上の拒否または出力上限の可能性）",
-        stop_reason: message.stop_reason,
+        error:
+          "出力が長すぎて途中で切れました。解析ページ数を減らすか、フロア・図面種別ごとに分けて解析してください（目安5〜8枚）。",
+        stop_reason: final.stop_reason,
+      });
+    }
+
+    const text = final.content
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("");
+
+    let takeoff;
+    try {
+      takeoff = Takeoff.parse(JSON.parse(text));
+    } catch {
+      return res.status(502).json({
+        error:
+          "AI出力の解析に失敗しました（出力が途中で切れた可能性）。解析ページ数を減らして再試行してください。",
       });
     }
 
     res.json({
       mock: false,
       model: MODEL,
-      usage: message.usage,
-      takeoff: message.parsed_output,
+      usage: final.usage,
+      takeoff,
     });
   } catch (err) {
     console.error("[analyze] error:", err);

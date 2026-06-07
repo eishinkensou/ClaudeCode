@@ -72,6 +72,7 @@ export default function App() {
     setSet((s) => [...s, { page: pageIndex, label: "" }].sort((a, b) => a.page - b.page));
   };
   const removeFromSet = (pg: number) => setSet((s) => s.filter((x) => x.page !== pg));
+  const clearSet = () => setSet([]);
   const setLabel = (pg: number, label: string) =>
     setSet((s) => s.map((x) => (x.page === pg ? { ...x, label } : x)));
 
@@ -141,7 +142,13 @@ export default function App() {
 
               {set.length > 0 && (
                 <div className="set-bar">
-                  <div className="set-title">解析セット（複数図面を相互参照して拾います）</div>
+                  <div className="set-title">
+                    解析セット {set.length}枚（複数図面を相互参照して拾います）
+                    <button className="clear-set" onClick={clearSet}>全消去</button>
+                    {set.length > 10 && (
+                      <span className="too-many">⚠ 枚数が多すぎます。関連図面だけ（目安5〜8枚）に絞ってください</span>
+                    )}
+                  </div>
                   {set.map((s) => (
                     <div className="set-item" key={s.page}>
                       <span className="pg">p.{s.page}</span>
