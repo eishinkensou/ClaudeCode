@@ -5,7 +5,7 @@
  */
 import { getDocument, OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { extractPage, type OpsTable } from "../src/pdf/extract";
-import { estimateAll, DEFAULT_SETTINGS } from "../src/estimate";
+import { takeoffAll, DEFAULT_SETTINGS } from "../src/estimate";
 
 // ── 最小のベクターPDFを手組みで生成 ──
 function buildPdf(): Uint8Array {
@@ -59,10 +59,21 @@ async function main() {
   );
 
   const scale = ex.detectedScale!;
-  const result = estimateAll(ex.rooms, scale, DEFAULT_SETTINGS);
-  for (const r of result.perRegion) {
-    console.log(`\n[${r.regionName}] 面積 ${r.areaM2}m²`);
-    for (const it of r.items) console.log(`  ${it.name}: ${it.qty} ${it.unit}`);
+  // 各室に天井ボード1種・開口1か所を付けて拾い出しを確認
+  const bt = DEFAULT_SETTINGS.boardTypes[0].id;
+  const rooms = ex.rooms.map((r) => ({
+    ...r,
+    ceilingBoards: [{ boardTypeId: bt }],
+    openings: [
+      { id: `${r.id}-o`, name: "SD-1", kind: "door" as const, widthMm: 900, heightMm: 3000, count: 1 },
+    ],
+  }));
+  const result = takeoffAll(rooms, scale, DEFAULT_SETTINGS);
+  for (const r of result.rooms) {
+    console.log(
+      `\n[${r.roomName}] 天井下地 ${r.ceilingFramingAreaM2}m² / 開口補強 ${r.openingReinforceM}m`
+    );
+    for (const b of r.ceilingBoards) console.log(`  天井ボード ${b.name}: ${b.areaM2}m²`);
   }
 
   // ── 検証アサーション ──
@@ -75,10 +86,13 @@ async function main() {
 
   // 部屋A 200×150pt を 1/100 換算: 1pt=0.3528×100=35.28mm
   // 面積 = (200×35.28)×(150×35.28)/1e6 ≒ 37.34 m²
-  const office = result.perRegion.find((r) => r.regionName === "OFFICE");
+  const office = result.rooms.find((r) => r.roomName === "OFFICE");
   const expectedArea = ((200 * (25.4 / 72) * 100) / 1000) * ((150 * (25.4 / 72) * 100) / 1000);
-  if (!office || Math.abs((office.areaM2 ?? 0) - expectedArea) > 0.5)
-    errors.push(`OFFICE 面積が期待値 ${expectedArea.toFixed(2)} と不一致: ${office?.areaM2}`);
+  if (!office || Math.abs(office.ceilingFramingAreaM2 - expectedArea) > 0.5)
+    errors.push(`OFFICE 天井面積が期待値 ${expectedArea.toFixed(2)} と不一致: ${office?.ceilingFramingAreaM2}`);
+  // 開口補強 ドア 0.9×3.0 → 6.9m
+  if (!office || Math.abs(office.openingReinforceM - 6.9) > 0.01)
+    errors.push(`OFFICE 開口補強が 6.9m でない: ${office?.openingReinforceM}`);
 
   if (errors.length) {
     console.error("\n❌ 検証失敗:\n - " + errors.join("\n - "));

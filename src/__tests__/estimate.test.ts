@@ -1,101 +1,165 @@
 import { describe, it, expect } from "vitest";
-import { estimateCeiling } from "../estimate/ceiling";
-import { estimateWall } from "../estimate/wall";
-import { estimateBoard } from "../estimate/board";
-import { estimateRegion, estimateAll } from "../estimate";
+import {
+  takeoffRoom,
+  takeoffAll,
+  ceilingAreaM2,
+  wallLengthM,
+  openingReinforcePerUnit,
+} from "../estimate";
 import { DEFAULT_SETTINGS } from "../estimate/defaults";
-import type { LineItem, Region, Scale } from "../types";
+import type { AppSettings, Room, Scale, Wall } from "../types";
 
-const find = (items: LineItem[], name: string) =>
-  items.find((i) => i.name === name)!;
+// 縮尺: 1pt = 50mm（テスト用の単純設定）
+const scale: Scale = { realMmPerPt: 50, label: "test", source: "default" };
 
-describe("estimateCeiling", () => {
-  const spec = DEFAULT_SETTINGS.ceiling;
-  it("scales material counts with area", () => {
-    const items = estimateCeiling(100, spec);
-    // 野縁延長 = 100 / 0.303 ≒ 330m → ×1.05 / 4m ≒ 87本
-    expect(find(items, "野縁").qty).toBe(Math.ceil((100 / 0.303) * 1.05 / 4));
-    // 吊りボルト = 100 / 0.81 ≒ 124本
-    expect(find(items, "吊りボルト(W3/8)").qty).toBe(Math.ceil(100 / (0.9 * 0.9)));
-  });
-  it("returns nothing for zero area", () => {
-    expect(estimateCeiling(0, spec)).toEqual([]);
-  });
-});
+const settings: AppSettings = {
+  ...DEFAULT_SETTINGS,
+  defaultWallHeightMm: 3000,
+  boardTypes: [
+    { id: "pb95", name: "PB9.5" },
+    { id: "pb125", name: "PB12.5" },
+    { id: "rw12", name: "岩綿12" },
+  ],
+};
 
-describe("estimateWall", () => {
-  const spec = DEFAULT_SETTINGS.wall;
-  it("computes runner as twice the length", () => {
-    const items = estimateWall(10, 2.7, spec);
-    // ランナー延長 = 20m → ×1.05 / 4 = 6本
-    expect(find(items, "ランナー").qty).toBe(Math.ceil((20 * 1.05) / 4));
-  });
-  it("computes stud count from pitch + 1", () => {
-    const items = estimateWall(10, 2.7, spec);
-    const studCount = Math.floor(10 / 0.303) + 1; // 34
-    expect(find(items, "スタッド").note).toContain(`${studCount}本`);
-  });
-  it("adds braces when height exceeds row pitch", () => {
-    const items = estimateWall(10, 2.7, spec); // 2700/1200 = 2段
-    expect(find(items, "振れ止め").note).toContain("2段");
-  });
-});
+// 100pt×80pt → 実寸 5000mm×4000mm = 20m²
+const polygon = [
+  { x: 0, y: 0 },
+  { x: 100, y: 0 },
+  { x: 100, y: 80 },
+  { x: 0, y: 80 },
+];
 
-describe("estimateBoard", () => {
-  const spec = DEFAULT_SETTINGS.board;
-  it("computes board count with waste", () => {
-    const items = estimateBoard(100, { ...spec, layers: 1 });
-    const boardArea = 0.91 * 1.82;
-    expect(find(items, "ボード").qty).toBe(Math.ceil((100 * 1.1) / boardArea));
-  });
-  it("doubles for two layers", () => {
-    const one = estimateBoard(100, { ...spec, layers: 1 });
-    const two = estimateBoard(100, { ...spec, layers: 2 });
-    expect(find(two, "ボード").qty).toBeGreaterThan(find(one, "ボード").qty * 1.9);
-  });
-});
-
-describe("estimateRegion / estimateAll", () => {
-  // 縮尺: 1pt = 50mm（=1/50 図面相当の単純設定）
-  const scale: Scale = { realMmPerPt: 50, label: "test", source: "default" };
-
-  const ceilingRegion: Region = {
-    id: "c1",
+function baseRoom(over: Partial<Room> = {}): Room {
+  return {
+    id: "r1",
     name: "事務所",
-    kind: "ceiling",
-    // 100pt×80pt → 実寸 5000mm×4000mm = 20m²
-    polygon: [
-      { x: 0, y: 0 },
-      { x: 100, y: 0 },
-      { x: 100, y: 80 },
-      { x: 0, y: 80 },
-    ],
-    confidence: 1,
+    polygon,
+    ceilingBoards: [],
+    includeCeiling: true,
+    walls: [],
+    openings: [],
     source: "manual",
+    confidence: 1,
+    ...over,
   };
+}
 
-  it("converts pt area to m² via scale", () => {
-    const r = estimateRegion(ceilingRegion, scale, DEFAULT_SETTINGS);
-    expect(r.areaM2).toBeCloseTo(20, 3);
-    expect(r.items.some((i) => i.name === "野縁")).toBe(true);
-    // includeBoard 既定 true → 天井ボードも含む
-    expect(r.items.some((i) => i.name === "ボード")).toBe(true);
+describe("ceilingAreaM2 / wallLengthM", () => {
+  it("converts polygon area pt² → m² via scale", () => {
+    expect(ceilingAreaM2(baseRoom(), scale)).toBeCloseTo(20, 3);
+  });
+  it("falls back to manual area when no polygon", () => {
+    const r = baseRoom({ polygon: [], ceilingAreaM2Manual: 12.5 });
+    expect(ceilingAreaM2(r, scale)).toBe(12.5);
+  });
+  it("computes wall length from drawn segment", () => {
+    const w: Wall = {
+      id: "w",
+      name: "W1",
+      segment: { a: { x: 0, y: 0 }, b: { x: 100, y: 0 } }, // 100pt × 50mm = 5000mm = 5m
+      boards: [],
+      includeFraming: true,
+    };
+    expect(wallLengthM(w, scale)).toBeCloseTo(5, 3);
+  });
+  it("computes wall length from manual mm", () => {
+    const w: Wall = { id: "w", name: "W1", lengthMmManual: 8000, boards: [], includeFraming: true };
+    expect(wallLengthM(w, scale)).toBe(8);
+  });
+});
+
+describe("openingReinforcePerUnit", () => {
+  it("door = 2H + W (example: H3, W0.9 → 6.9)", () => {
+    expect(openingReinforcePerUnit("door", 0.9, 3).perUnitM).toBeCloseTo(6.9, 6);
+  });
+  it("window = 2H + 2W", () => {
+    expect(openingReinforcePerUnit("window", 1.5, 1.2).perUnitM).toBeCloseTo(2 * 1.2 + 2 * 1.5, 6);
+  });
+});
+
+describe("takeoffRoom", () => {
+  it("aggregates ceiling board area per type (重ね貼り)", () => {
+    const r = baseRoom({
+      ceilingBoards: [{ boardTypeId: "rw12" }, { boardTypeId: "pb95" }],
+    });
+    const t = takeoffRoom(r, scale, settings);
+    expect(t.ceilingFramingAreaM2).toBeCloseTo(20, 2);
+    expect(t.ceilingBoards).toHaveLength(2);
+    expect(t.ceilingBoards.find((b) => b.name === "岩綿12")?.areaM2).toBeCloseTo(20, 2);
+    expect(t.ceilingBoards.find((b) => b.name === "PB9.5")?.areaM2).toBeCloseTo(20, 2);
   });
 
-  it("can exclude board", () => {
-    const r = estimateRegion(
-      { ...ceilingRegion, includeBoard: false },
-      scale,
-      DEFAULT_SETTINGS
-    );
-    expect(r.items.some((i) => i.name === "ボード")).toBe(false);
+  it("computes wall framing once and board per face", () => {
+    const wall: Wall = {
+      id: "w1",
+      name: "W1",
+      lengthMmManual: 10000, // 10m
+      heightMm: 3000, // 3m → 下地 30m²
+      boards: [{ boardTypeId: "pb125", faces: 2 }],
+      includeFraming: true,
+    };
+    const t = takeoffRoom(baseRoom({ walls: [wall] }), scale, settings);
+    expect(t.wallFramingAreaM2).toBeCloseTo(30, 2);
+    // ボードは両面 → 60m²
+    expect(t.wallBoards.find((b) => b.name === "PB12.5")?.areaM2).toBeCloseTo(60, 2);
+    expect(t.wallDetails[0].boards[0].faces).toBe(2);
   });
 
-  it("aggregates totals across regions", () => {
-    const res = estimateAll([ceilingRegion, ceilingRegion], scale, DEFAULT_SETTINGS);
-    const single = estimateRegion(ceilingRegion, scale, DEFAULT_SETTINGS);
-    const totalNoburi = res.totals.find((i) => i.name === "野縁")!;
-    const oneNoburi = single.items.find((i) => i.name === "野縁")!;
-    expect(totalNoburi.qty).toBe(oneNoburi.qty * 2);
+  it("uses default wall height when wall height is unset", () => {
+    const wall: Wall = { id: "w1", name: "W1", lengthMmManual: 5000, boards: [], includeFraming: true };
+    const t = takeoffRoom(baseRoom({ walls: [wall] }), scale, settings);
+    // 5m × 既定3m = 15m²
+    expect(t.wallFramingAreaM2).toBeCloseTo(15, 2);
+  });
+
+  it("excludes wall framing when includeFraming is false", () => {
+    const wall: Wall = {
+      id: "w1",
+      name: "W1",
+      lengthMmManual: 5000,
+      heightMm: 3000,
+      boards: [{ boardTypeId: "pb125", faces: 1 }],
+      includeFraming: false,
+    };
+    const t = takeoffRoom(baseRoom({ walls: [wall] }), scale, settings);
+    expect(t.wallFramingAreaM2).toBe(0);
+    // ボードは計上される
+    expect(t.wallBoards.find((b) => b.name === "PB12.5")?.areaM2).toBeCloseTo(15, 2);
+  });
+
+  it("computes opening reinforcement (door 6.9m example)", () => {
+    const r = baseRoom({
+      openings: [{ id: "o1", name: "SD-1", kind: "door", widthMm: 900, heightMm: 3000, count: 2 }],
+    });
+    const t = takeoffRoom(r, scale, settings);
+    expect(t.openingReinforceM).toBeCloseTo(13.8, 6); // 6.9 × 2
+    expect(t.openingDetails[0].perUnitM).toBeCloseTo(6.9, 6);
+  });
+
+  it("deducts opening area from walls when enabled", () => {
+    const wall: Wall = {
+      id: "w1",
+      name: "W1",
+      lengthMmManual: 10000,
+      heightMm: 3000,
+      boards: [{ boardTypeId: "pb125", faces: 1 }],
+      includeFraming: true,
+    };
+    const room = baseRoom({
+      walls: [wall],
+      openings: [{ id: "o1", name: "D", kind: "door", widthMm: 1000, heightMm: 2000, count: 1 }], // 2m²
+    });
+    const withDeduct = takeoffRoom(room, scale, { ...settings, deductOpenings: true });
+    expect(withDeduct.wallFramingAreaM2).toBeCloseTo(28, 2); // 30 - 2
+  });
+});
+
+describe("takeoffAll", () => {
+  it("sums framing and board types across rooms", () => {
+    const r = baseRoom({ ceilingBoards: [{ boardTypeId: "pb95" }] });
+    const res = takeoffAll([r, { ...r, id: "r2" }], scale, settings);
+    expect(res.totals.ceilingFramingAreaM2).toBeCloseTo(40, 2);
+    expect(res.totals.ceilingBoards.find((b) => b.name === "PB9.5")?.areaM2).toBeCloseTo(40, 2);
   });
 });

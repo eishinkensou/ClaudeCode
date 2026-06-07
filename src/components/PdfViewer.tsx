@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PageViewport } from "pdfjs-dist";
-import type { Point, Region } from "../types";
+import type { Point, Room } from "../types";
 import { renderPage, type PdfPage } from "../pdf/loader";
 
 export type ViewerMode = "select" | "calibrate" | "draw-ceiling" | "draw-wall";
@@ -8,42 +8,35 @@ export type ViewerMode = "select" | "calibrate" | "draw-ceiling" | "draw-wall";
 interface Props {
   page: PdfPage;
   renderScale: number;
-  regions: Region[];
+  rooms: Room[];
   mode: ViewerMode;
-  selectedId: string | null;
-  onSelect: (id: string | null) => void;
-  onViewport: (vp: PageViewport) => void;
+  selectedRoomId: string | null;
+  onSelectRoom: (id: string | null) => void;
   onCalibrate: (a: Point, b: Point) => void;
-  onAddRegion: (poly: Point[], isWall: boolean) => void;
+  onAddCeiling: (poly: Point[]) => void;
+  onAddWall: (a: Point, b: Point) => void;
 }
 
-const kindColor: Record<string, string> = {
-  ceiling: "#2563eb",
-  wall: "#dc2626",
-  board: "#059669",
-};
+const CEIL = "#2563eb";
+const WALL = "#dc2626";
 
 export default function PdfViewer(props: Props) {
-  const { page, renderScale, regions, mode, selectedId } = props;
+  const { page, renderScale, rooms, mode, selectedRoomId } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [vp, setVp] = useState<PageViewport | null>(null);
   const [drag, setDrag] = useState<{ start: Point; end: Point } | null>(null);
-  const [firstPt, setFirstPt] = useState<Point | null>(null); // calibrate / wall の1点目（画面座標）
+  const [firstPt, setFirstPt] = useState<Point | null>(null);
 
-  // ページ描画
   useEffect(() => {
     let cancelled = false;
     const canvas = canvasRef.current;
     if (!canvas) return;
     renderPage(page, canvas, renderScale).then((viewport) => {
-      if (cancelled) return;
-      setVp(viewport);
-      props.onViewport(viewport);
+      if (!cancelled) setVp(viewport);
     });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, renderScale]);
 
   const toPdf = (sx: number, sy: number): Point => {
@@ -56,7 +49,6 @@ export default function PdfViewer(props: Props) {
     const [x, y] = vp.convertToViewportPoint(p.x, p.y);
     return [x, y];
   };
-
   const localXY = (e: React.MouseEvent): Point => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -73,18 +65,17 @@ export default function PdfViewer(props: Props) {
         const a = toPdf(firstPt.x, firstPt.y);
         const b = toPdf(p.x, p.y);
         if (mode === "calibrate") props.onCalibrate(a, b);
-        else props.onAddRegion([a, b], true);
+        else props.onAddWall(a, b);
         setFirstPt(null);
+        setDrag(null);
       }
     }
   };
 
   const onMove = (e: React.MouseEvent) => {
-    if (mode === "draw-ceiling" && drag) {
-      setDrag({ ...drag, end: localXY(e) });
-    } else if ((mode === "calibrate" || mode === "draw-wall") && firstPt) {
+    if (mode === "draw-ceiling" && drag) setDrag({ ...drag, end: localXY(e) });
+    else if ((mode === "calibrate" || mode === "draw-wall") && firstPt)
       setDrag({ start: firstPt, end: localXY(e) });
-    }
   };
 
   const onUp = (e: React.MouseEvent) => {
@@ -95,20 +86,11 @@ export default function PdfViewer(props: Props) {
       const x2 = Math.max(drag.start.x, end.x);
       const y2 = Math.max(drag.start.y, end.y);
       if (x2 - x1 > 6 && y2 - y1 > 6) {
-        const poly = [
-          toPdf(x1, y1),
-          toPdf(x2, y1),
-          toPdf(x2, y2),
-          toPdf(x1, y2),
-        ];
-        props.onAddRegion(poly, false);
+        props.onAddCeiling([toPdf(x1, y1), toPdf(x2, y1), toPdf(x2, y2), toPdf(x1, y2)]);
       }
       setDrag(null);
     }
   };
-
-  const cursor =
-    mode === "select" ? "default" : mode === "calibrate" ? "crosshair" : "crosshair";
 
   const w = vp?.width ?? 0;
   const h = vp?.height ?? 0;
@@ -120,61 +102,62 @@ export default function PdfViewer(props: Props) {
         className="overlay"
         width={w}
         height={h}
-        style={{ cursor }}
+        style={{ cursor: mode === "select" ? "default" : "crosshair" }}
         onMouseDown={onDown}
         onMouseMove={onMove}
         onMouseUp={onUp}
       >
         {vp &&
-          regions.map((r) => {
-            const pts = r.polygon.map(toScreen);
-            const color = kindColor[r.kind];
-            const selected = r.id === selectedId;
-            if (r.kind === "wall" && r.polygon.length === 2) {
-              const [a, b] = pts;
-              return (
-                <g key={r.id} onClick={() => props.onSelect(r.id)}>
-                  <line
-                    x1={a[0]}
-                    y1={a[1]}
-                    x2={b[0]}
-                    y2={b[1]}
-                    stroke={color}
-                    strokeWidth={selected ? 5 : 3}
-                    strokeOpacity={0.85}
-                  />
-                </g>
-              );
-            }
-            const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0]},${p[1]}`).join(" ") + "Z";
+          rooms.map((room) => {
+            const selected = room.id === selectedRoomId;
+            const pts = room.polygon.map(toScreen);
+            const d =
+              pts.length >= 3
+                ? pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0]},${p[1]}`).join(" ") + "Z"
+                : "";
             return (
-              <g key={r.id} onClick={() => props.onSelect(r.id)} style={{ cursor: "pointer" }}>
-                <path
-                  d={d}
-                  fill={color}
-                  fillOpacity={selected ? 0.28 : 0.14}
-                  stroke={color}
-                  strokeWidth={selected ? 2.5 : 1.5}
-                />
+              <g key={room.id} onClick={() => props.onSelectRoom(room.id)} style={{ cursor: "pointer" }}>
+                {d && (
+                  <path
+                    d={d}
+                    fill={CEIL}
+                    fillOpacity={selected ? 0.26 : 0.12}
+                    stroke={CEIL}
+                    strokeWidth={selected ? 2.5 : 1.5}
+                  />
+                )}
                 {pts[0] && (
-                  <text x={pts[0][0] + 4} y={pts[0][1] + 14} fontSize={12} fill={color} fontWeight={600}>
-                    {r.name}
+                  <text x={pts[0][0] + 4} y={pts[0][1] + 14} fontSize={12} fill={CEIL} fontWeight={700}>
+                    {room.name}
                   </text>
+                )}
+                {room.walls.map((wall) =>
+                  wall.segment ? (
+                    <line
+                      key={wall.id}
+                      x1={toScreen(wall.segment.a)[0]}
+                      y1={toScreen(wall.segment.a)[1]}
+                      x2={toScreen(wall.segment.b)[0]}
+                      y2={toScreen(wall.segment.b)[1]}
+                      stroke={WALL}
+                      strokeWidth={selected ? 5 : 3.5}
+                      strokeOpacity={0.85}
+                    />
+                  ) : null
                 )}
               </g>
             );
           })}
 
-        {/* 作図中のプレビュー */}
         {drag && mode === "draw-ceiling" && (
           <rect
             x={Math.min(drag.start.x, drag.end.x)}
             y={Math.min(drag.start.y, drag.end.y)}
             width={Math.abs(drag.end.x - drag.start.x)}
             height={Math.abs(drag.end.y - drag.start.y)}
-            fill="#2563eb"
+            fill={CEIL}
             fillOpacity={0.2}
-            stroke="#2563eb"
+            stroke={CEIL}
             strokeDasharray="4 3"
           />
         )}
@@ -184,7 +167,7 @@ export default function PdfViewer(props: Props) {
             y1={drag.start.y}
             x2={drag.end.x}
             y2={drag.end.y}
-            stroke={mode === "calibrate" ? "#b45309" : "#dc2626"}
+            stroke={mode === "calibrate" ? "#b45309" : WALL}
             strokeWidth={2}
             strokeDasharray="5 3"
           />

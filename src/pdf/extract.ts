@@ -1,6 +1,6 @@
 import * as pdfjsLib from "pdfjs-dist";
 import type { PDFPageProxy } from "pdfjs-dist";
-import type { PageExtract, Point, Scale, Segment, TextItem, Region } from "../types";
+import type { PageExtract, Point, Scale, Segment, TextItem, Room } from "../types";
 import { detectRectangles, polygonArea, pointInPolygon, bbox } from "../geometry";
 
 type PdfPage = PDFPageProxy;
@@ -204,15 +204,16 @@ export function scaleFromTwoPoints(a: Point, b: Point, realMm: number): Scale {
   };
 }
 
-let regionSeq = 0;
-const nextId = () => `r${Date.now().toString(36)}_${regionSeq++}`;
+let roomSeq = 0;
+const nextId = () => `r${Date.now().toString(36)}_${roomSeq++}`;
 
 /**
- * 検出した矩形を部屋（天井領域）の候補に変換。
+ * 検出した矩形を室（部屋）の候補に変換。天井ポリゴンとして取り込み、
  * 内部のテキスト（部屋名らしきもの）を名前に採用する。
+ * 壁・開口・ボード種類は利用者が画面で設定する。
  */
-function rectsToRegions(rects: Point[][], texts: TextItem[], pageH: number): Region[] {
-  const regions: Region[] = [];
+function rectsToRooms(rects: Point[][], texts: TextItem[]): Room[] {
+  const rooms: Room[] = [];
   for (const poly of rects) {
     const inside = texts.filter((t) => pointInPolygon({ x: t.x, y: t.y }, poly));
     // 寸法数値ではなく名称らしいテキストを優先
@@ -224,19 +225,19 @@ function rectsToRegions(rects: Point[][], texts: TextItem[], pageH: number): Reg
     let confidence = 0.5;
     if (nameText) confidence += 0.3;
     if (areaPt > 5000) confidence += 0.1;
-    regions.push({
+    rooms.push({
       id: nextId(),
-      name: nameText ? nameText.str.trim() : `領域${regions.length + 1}`,
-      kind: "ceiling",
+      name: nameText ? nameText.str.trim() : `室${rooms.length + 1}`,
       polygon: poly,
+      ceilingBoards: [],
+      includeCeiling: true,
+      walls: [],
+      openings: [],
       confidence: Math.min(1, confidence),
       source: "auto",
     });
   }
-  // 大きすぎる（用紙枠＝ページの大半）矩形は除外
-  const pageArea = pageH * pageH; // 概算上限用
-  void pageArea;
-  return regions;
+  return rooms;
 }
 
 /** 1 ページを丸ごと抽出して解析する */
@@ -256,7 +257,7 @@ export async function extractPage(page: PdfPage, pageNumber: number): Promise<Pa
   });
 
   const detectedScale = detectScaleFromTexts(texts);
-  const rooms = rectsToRegions(rects, texts, viewport.height);
+  const rooms = rectsToRooms(rects, texts);
 
   return {
     pageNumber,

@@ -1,4 +1,4 @@
-// アプリ全体で共有する型定義
+// アプリ全体で共有する型定義（拾い出し＝面積・延長ベース）
 
 /** 2次元座標（PDFページ座標系 = pt 単位、左下原点） */
 export interface Point {
@@ -21,39 +21,88 @@ export interface TextItem {
   height: number;
 }
 
-/** 拾い対象の種別 */
-export type RegionKind = "ceiling" | "wall" | "board";
-
-/**
- * 検出または手入力された「拾い領域」。
- * 天井・ボードは閉じたポリゴン（面積拾い）、
- * 間仕切壁は線分の集合（延長拾い）として扱う。
- */
-export interface Region {
-  id: string;
-  name: string;
-  kind: RegionKind;
-  /** ポリゴン頂点（面積系）。pt 単位。 */
-  polygon: Point[];
-  /** 壁などの線分（延長系）。pt 単位。 */
-  segments?: Segment[];
-  /** 自動検出の信頼度 0..1（手入力は 1）。 */
-  confidence: number;
-  /** 階高・天井高など、領域ごとの高さ上書き（mm）。未指定なら設定値を使う。 */
-  heightMm?: number;
-  /** 下地に加えてボード貼りも積算するか（既定 true）。 */
-  includeBoard?: boolean;
-  /** 自動検出由来か手動作成か。 */
-  source: "auto" | "manual";
-}
-
 /** 縮尺。realMmPerPt = 図面実寸(mm) / PDF座標(pt) */
 export interface Scale {
   realMmPerPt: number;
-  /** "1/100" などの表示用ラベル。 */
   label: string;
-  /** どうやって決まったか。 */
   source: "auto-text" | "manual-two-point" | "default";
+}
+
+// ───────────────────────── マスター ─────────────────────────
+
+/** ボード種類のマスター（例: せっこうボード9.5、岩綿吸音板12 など） */
+export interface BoardType {
+  id: string;
+  name: string;
+}
+
+// ───────────────────────── 部屋モデル ─────────────────────────
+
+/** 天井ボードの1層（重ね貼り対応・天井は室内側1面） */
+export interface CeilingBoardLayer {
+  boardTypeId: string;
+}
+
+/** 壁ボードの1層（重ね貼り・面数指定） */
+export interface WallBoardLayer {
+  boardTypeId: string;
+  /** 面数（片面=1 / 両面=2） */
+  faces: number;
+}
+
+/** 1本の間仕切壁 */
+export interface Wall {
+  id: string;
+  name: string;
+  /** 作図された線分（pt）。あれば縮尺換算で延長を出す。 */
+  segment?: Segment;
+  /** 手入力の延長（mm）。segment が無いときに使用。 */
+  lengthMmManual?: number;
+  /** 壁高さ（mm）。未指定なら設定の既定値。 */
+  heightMm?: number;
+  /** 壁ボード（重ね貼り・複数種類） */
+  boards: WallBoardLayer[];
+  /** 壁下地（軽量鉄骨下地）を計上するか */
+  includeFraming: boolean;
+}
+
+/** 建具などの開口（開口補強の算定に使用） */
+export interface Opening {
+  id: string;
+  /** 建具記号など（SD-1, AW-2 等） */
+  name: string;
+  kind: "door" | "window";
+  widthMm: number;
+  heightMm: number;
+  count: number;
+}
+
+/** 室（拾い出しの基本単位）。天井＋壁＋開口を持つ。 */
+export interface Room {
+  id: string;
+  name: string;
+
+  // ── 天井 ──
+  /** 天井ポリゴン（pt）。面積はここから算出。空なら手入力面積を使う。 */
+  polygon: Point[];
+  /** 手入力の天井面積（m²）。polygon が空のとき使用。 */
+  ceilingAreaM2Manual?: number;
+  /** 天井高（mm・参考/根拠表示用） */
+  ceilingHeightMm?: number;
+  /** 天井ボード（重ね貼り） */
+  ceilingBoards: CeilingBoardLayer[];
+  /** 天井下地を計上するか */
+  includeCeiling: boolean;
+
+  // ── 壁 ──
+  walls: Wall[];
+
+  // ── 開口 ──
+  openings: Opening[];
+
+  // ── 由来 ──
+  source: "auto" | "manual";
+  confidence: number;
 }
 
 /** 1 ページ分の抽出結果 */
@@ -64,86 +113,85 @@ export interface PageExtract {
   segments: Segment[];
   texts: TextItem[];
   detectedScale: Scale | null;
-  rooms: Region[];
+  rooms: Room[];
 }
 
-// ───────────────────────── 積算設定 ─────────────────────────
+// ───────────────────────── 設定 ─────────────────────────
 
-/** 天井（軽天）下地の仕様 */
-export interface CeilingSpec {
-  /** 野縁ピッチ mm（例: 303 / 360 / 455） */
-  noburiPitchMm: number;
-  /** 野縁受けピッチ mm（例: 900 / 1000） */
-  noburiUkePitchMm: number;
-  /** 吊りボルト・ハンガー・インサートのピッチ mm（例: 900） */
-  hangerPitchMm: number;
-  /** 定尺材長さ mm（例: 4000） */
-  barLengthMm: number;
-  /** 歩掛り割増（端材・ロス） 例 0.05 = 5% */
-  wasteRatio: number;
+export interface AppSettings {
+  /** 既定の壁高さ（mm） */
+  defaultWallHeightMm: number;
+  /** 既定の天井高（mm） */
+  defaultCeilingHeightMm: number;
+  /** 壁下地・壁ボード面積から開口面積を差し引くか（既定: 差し引かない） */
+  deductOpenings: boolean;
+  /** ボード種類マスター */
+  boardTypes: BoardType[];
 }
 
-/** 間仕切壁（LGS）下地の仕様 */
-export interface WallSpec {
-  /** スタッドピッチ mm（例: 303 / 455 / 606） */
-  studPitchMm: number;
-  /** 振れ止めの段ピッチ mm（高さ方向、例: 1200） */
-  braceRowPitchMm: number;
-  /** スペーサーピッチ mm（スタッドに沿って、例: 600） */
-  spacerPitchMm: number;
-  /** 標準階高 mm（領域に heightMm が無いとき使用） */
-  defaultHeightMm: number;
-  /** ランナー・スタッドの定尺材長さ mm（例: 4000） */
-  barLengthMm: number;
-  wasteRatio: number;
-}
+// ───────────────────────── 拾い出し結果 ─────────────────────────
 
-/** ボード仕様 */
-export interface BoardSpec {
-  /** 1 枚の寸法 mm（例: 910 × 1820） */
-  widthMm: number;
-  lengthMm: number;
-  /** 壁は両面=2、片面=1。天井は 1。 */
-  layers: number;
-  /** ビス本数/枚 */
-  screwsPerBoard: number;
-  wasteRatio: number;
-}
-
-export interface EstimateSettings {
-  ceiling: CeilingSpec;
-  wall: WallSpec;
-  board: BoardSpec;
-}
-
-// ───────────────────────── 積算結果 ─────────────────────────
-
-export interface LineItem {
-  /** 材料・項目名 */
+/** 種類別の面積（ボード集計用） */
+export interface TypedArea {
+  /** ボード種類名 */
   name: string;
-  /** 数量 */
-  qty: number;
-  /** 単位（m, 本, 個, 枚 等） */
-  unit: string;
-  /** 補足（算定根拠） */
-  note?: string;
+  areaM2: number;
 }
 
-export interface RegionResult {
-  regionId: string;
-  regionName: string;
-  kind: RegionKind;
-  /** 面積 m²（面積系のみ） */
-  areaM2?: number;
-  /** 周長 m */
-  perimeterM?: number;
-  /** 壁延長 m（壁系のみ） */
-  wallLengthM?: number;
-  items: LineItem[];
+/** 壁ごとの明細（根拠表示用） */
+export interface WallDetail {
+  name: string;
+  lengthM: number;
+  heightM: number;
+  framingAreaM2: number;
+  /** この壁のボード（種類名・面数・面積） */
+  boards: { name: string; faces: number; areaM2: number }[];
 }
 
-export interface EstimateResult {
-  perRegion: RegionResult[];
-  /** 材料名で集約した合計 */
-  totals: LineItem[];
+/** 開口ごとの明細（根拠表示用） */
+export interface OpeningDetail {
+  name: string;
+  kind: "door" | "window";
+  widthM: number;
+  heightM: number;
+  count: number;
+  /** 1か所あたりの補強延長 m */
+  perUnitM: number;
+  /** 合計補強延長 m */
+  totalM: number;
+  /** 算定式の文字列 */
+  formula: string;
+}
+
+/** 室ごとの拾い出し */
+export interface RoomTakeoff {
+  roomId: string;
+  roomName: string;
+
+  ceilingFramingAreaM2: number;
+  ceilingHeightMm?: number;
+  /** 天井ボード 種類別面積 */
+  ceilingBoards: TypedArea[];
+
+  wallFramingAreaM2: number;
+  /** 壁ボード 種類別面積 */
+  wallBoards: TypedArea[];
+  wallDetails: WallDetail[];
+
+  openingReinforceM: number;
+  openingDetails: OpeningDetail[];
+}
+
+/** 全体の拾い出し結果 */
+export interface TakeoffResult {
+  rooms: RoomTakeoff[];
+  totals: {
+    ceilingFramingAreaM2: number;
+    wallFramingAreaM2: number;
+    /** 天井ボード 種類別 合計 */
+    ceilingBoards: TypedArea[];
+    /** 壁ボード 種類別 合計 */
+    wallBoards: TypedArea[];
+    openingReinforceM: number;
+  };
 }

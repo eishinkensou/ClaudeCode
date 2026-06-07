@@ -109,13 +109,41 @@ input[type="number"] { width: 72px; }
 .spec-grid .grp { grid-column: 1 / -1; font-weight: 600; margin-top: 8px; color: var(--accent); }
 .spec-grid label { color: var(--text); }
 
-table.results { width: 100%; border-collapse: collapse; }
-table.results th, table.results td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
-table.results th { background: #f0f3f7; position: sticky; top: 0; }
-table.results td.num { text-align: right; font-variant-numeric: tabular-nums; }
-.region-result { margin-bottom: 16px; }
-.region-result h4 { margin: 8px 0 4px; display: flex; align-items: center; gap: 8px; }
-.measure { color: var(--muted); font-size: 12px; font-weight: 400; }
+/* 室パネル */
+.row-between { display: flex; justify-content: space-between; align-items: center; }
+.room-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 12px; }
+.room-tab { font-size: 12px; padding: 4px 8px; position: relative; }
+.room-tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.room-tab .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ceiling); margin-left: 4px; vertical-align: middle; }
+.room-editor fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; padding: 8px 10px; }
+.room-editor legend { font-weight: 700; padding: 0 6px; color: var(--accent); }
+.fld { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.fld > label { color: var(--muted); font-size: 12px; min-width: 52px; }
+.fld .grow { flex: 1; }
+.fld .readout { font-weight: 600; }
+.sub { font-size: 12px; font-weight: 600; color: var(--muted); margin: 8px 0 4px; }
+.sub2 { font-size: 12px; font-weight: 700; color: var(--accent); margin: 12px 0 4px; }
+.card { border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin-bottom: 8px; background: #fafbfc; }
+.wall-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+button.danger { color: #b91c1c; border-color: #f0b4b4; }
+button.danger:hover { background: #fdecec; }
+
+table.results { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+table.results th, table.results td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
+table.results th { background: #f0f3f7; }
+table.results td.num, table.results th.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.sub-table { font-size: 12px; margin: 4px 0 10px; }
+
+.room-result { margin-bottom: 18px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.room-result h4 { margin: 8px 0 6px; font-size: 15px; color: var(--text); border-left: 4px solid var(--accent); padding-left: 8px; }
+.rr-line { display: flex; gap: 8px; align-items: baseline; margin: 3px 0; }
+.rr-label { min-width: 84px; color: var(--muted); font-size: 12px; }
+.rr-val { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rr-note { color: var(--muted); font-size: 12px; }
+.rr-multi { flex: 1; }
+.typed-row { display: flex; justify-content: space-between; max-width: 280px; }
+.typed-name { color: var(--text); }
+.typed-val { font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .banner { padding: 8px 12px; font-size: 13px; }
 .banner.info { background: var(--accent-soft); color: #14467f; }

@@ -1,43 +1,37 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { EstimateSettings, Point, Region, Scale } from "./types";
+import type { AppSettings, Point, Room, Scale, Wall } from "./types";
 import { loadPdf, type PdfDocument, type PdfPage } from "./pdf/loader";
-import {
-  extractPage,
-  scaleFromDenominator,
-  scaleFromTwoPoints,
-} from "./pdf/extract";
-import { estimateAll, DEFAULT_SETTINGS } from "./estimate";
+import { extractPage, scaleFromDenominator, scaleFromTwoPoints } from "./pdf/extract";
+import { takeoffAll, DEFAULT_SETTINGS } from "./estimate";
 import { downloadCsv } from "./export/csv";
 import PdfViewer, { type ViewerMode } from "./components/PdfViewer";
-import RoomList from "./components/RoomList";
+import RoomPanel from "./components/RoomPanel";
+import BoardTypesPanel from "./components/BoardTypesPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import ResultsTable from "./components/ResultsTable";
 
 let seq = 0;
-const newId = () => `m${Date.now().toString(36)}_${seq++}`;
+const newId = (p = "m") => `${p}${Date.now().toString(36)}_${seq++}`;
 
-type Tab = "regions" | "settings" | "results";
+type Tab = "rooms" | "boards" | "settings" | "results";
 
 export default function App() {
   const [doc, setDoc] = useState<PdfDocument | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [pageIndex, setPageIndex] = useState(1);
   const [page, setPage] = useState<PdfPage | null>(null);
-  const [regions, setRegions] = useState<Region[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [scale, setScale] = useState<Scale>(scaleFromDenominator(100));
-  const [settings, setSettings] = useState<EstimateSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [renderScale, setRenderScale] = useState(1.3);
   const [mode, setMode] = useState<ViewerMode>("select");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("regions");
-  const [status, setStatus] = useState<string>("");
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("rooms");
+  const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const result = useMemo(
-    () => estimateAll(regions, scale, settings),
-    [regions, scale, settings]
-  );
+  const result = useMemo(() => takeoffAll(rooms, scale, settings), [rooms, scale, settings]);
 
   const loadAndExtract = useCallback(
     async (document: PdfDocument, idx: number, autoScale: boolean) => {
@@ -46,22 +40,18 @@ export default function App() {
         const p = await document.getPage(idx);
         setPage(p);
         const ex = await extractPage(p, idx);
-        setRegions(ex.rooms);
-        setSelectedId(null);
+        setRooms(ex.rooms);
+        setSelectedRoomId(ex.rooms[0]?.id ?? null);
         setMode("select");
         if (autoScale) {
           if (ex.detectedScale) {
             setScale(ex.detectedScale);
-            setStatus(
-              `自動検出: 縮尺 ${ex.detectedScale.label}、領域 ${ex.rooms.length}件、線分 ${ex.segments.length}本`
-            );
+            setStatus(`自動検出: 縮尺 ${ex.detectedScale.label}、室 ${ex.rooms.length}件`);
           } else {
-            setStatus(
-              `領域 ${ex.rooms.length}件を検出（縮尺は未検出のため要校正）。線分 ${ex.segments.length}本`
-            );
+            setStatus(`室 ${ex.rooms.length}件を検出（縮尺は未検出のため要校正）`);
           }
         } else {
-          setStatus(`ページ${idx}: 領域 ${ex.rooms.length}件を検出`);
+          setStatus(`ページ${idx}: 室 ${ex.rooms.length}件`);
         }
       } catch (e) {
         setStatus(`解析エラー: ${(e as Error).message}`);
@@ -96,26 +86,89 @@ export default function App() {
     await loadAndExtract(doc, idx, false);
   };
 
-  const updateRegion = (id: string, patch: Partial<Region>) =>
-    setRegions((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const updateRoom = (id: string, patch: Partial<Room>) =>
+    setRooms((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
-  const deleteRegion = (id: string) =>
-    setRegions((rs) => rs.filter((r) => r.id !== id));
+  const deleteRoom = (id: string) =>
+    setRooms((rs) => {
+      const next = rs.filter((r) => r.id !== id);
+      if (selectedRoomId === id) setSelectedRoomId(next[0]?.id ?? null);
+      return next;
+    });
 
-  const addRegion = (poly: Point[], isWall: boolean) => {
-    const r: Region = {
-      id: newId(),
-      name: isWall ? `壁${regions.length + 1}` : `領域${regions.length + 1}`,
-      kind: isWall ? "wall" : "ceiling",
-      polygon: poly,
-      segments: isWall ? [{ a: poly[0], b: poly[1] }] : undefined,
-      confidence: 1,
-      source: "manual",
-    };
-    setRegions((rs) => [...rs, r]);
-    setSelectedId(r.id);
+  const emptyRoom = (name: string, polygon: Point[]): Room => ({
+    id: newId("room"),
+    name,
+    polygon,
+    ceilingAreaM2Manual: polygon.length >= 3 ? undefined : 0,
+    ceilingBoards: [],
+    includeCeiling: true,
+    walls: [],
+    openings: [],
+    source: "manual",
+    confidence: 1,
+  });
+
+  const addRoom = () => {
+    const r = emptyRoom(`室${rooms.length + 1}`, []);
+    setRooms((rs) => [...rs, r]);
+    setSelectedRoomId(r.id);
+  };
+
+  const addCeiling = (poly: Point[]) => {
+    const r = emptyRoom(`室${rooms.length + 1}`, poly);
+    setRooms((rs) => [...rs, r]);
+    setSelectedRoomId(r.id);
     setMode("select");
-    setTab("regions");
+    setTab("rooms");
+  };
+
+  const addWall = (a: Point, b: Point) => {
+    const wall: Wall = {
+      id: newId("w"),
+      name: "W?",
+      segment: { a, b },
+      heightMm: settings.defaultWallHeightMm,
+      boards: [],
+      includeFraming: true,
+    };
+    setRooms((rs) => {
+      let targetId = selectedRoomId;
+      let next = rs;
+      if (!targetId) {
+        const room = emptyRoom(`室${rs.length + 1}`, []);
+        next = [...rs, room];
+        targetId = room.id;
+        setSelectedRoomId(room.id);
+      }
+      return next.map((r) => {
+        if (r.id !== targetId) return r;
+        wall.name = `W${r.walls.length + 1}`;
+        return { ...r, walls: [...r.walls, wall] };
+      });
+    });
+    setMode("select");
+    setTab("rooms");
+  };
+
+  const generateWalls = (roomId: string) => {
+    setRooms((rs) =>
+      rs.map((r) => {
+        if (r.id !== roomId || r.polygon.length < 3) return r;
+        const walls: Wall[] = r.polygon.map((p, i) => {
+          const q = r.polygon[(i + 1) % r.polygon.length];
+          return {
+            id: newId("w"),
+            name: `W${r.walls.length + i + 1}`,
+            segment: { a: p, b: q },
+            heightMm: settings.defaultWallHeightMm,
+            boards: [],
+            includeFraming: true,
+          };
+        });
+        return { ...r, walls: [...r.walls, ...walls] };
+      })
+    );
   };
 
   const onCalibrate = (a: Point, b: Point) => {
@@ -141,7 +194,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="topbar">
-        <span className="title">軽天積算</span>
+        <span className="title">軽天拾い出し</span>
         <button className="primary" onClick={() => fileRef.current?.click()}>
           PDFを開く
         </button>
@@ -182,15 +235,14 @@ export default function App() {
               <span className="hint">1/</span>
               <input
                 type="number"
-                style={{ width: 64 }}
+                style={{ width: 60 }}
                 defaultValue={100}
                 onBlur={(e) => setDenom(Number(e.target.value))}
-                title="縮尺分母を入力（PDFが正寸の場合）"
+                title="縮尺分母（PDFが正寸の場合）"
               />
               <button
                 className={mode === "calibrate" ? "active" : ""}
                 onClick={() => setMode(mode === "calibrate" ? "select" : "calibrate")}
-                title="既知寸法の2点をクリックして校正"
               >
                 2点校正
               </button>
@@ -207,20 +259,15 @@ export default function App() {
               <button
                 className={mode === "draw-wall" ? "active" : ""}
                 onClick={() => setMode(mode === "draw-wall" ? "select" : "draw-wall")}
+                title="選択中の室に壁を追加します"
               >
                 壁を描く
               </button>
-              <button onClick={() => doc && loadAndExtract(doc, pageIndex, true)}>
-                再自動検出
-              </button>
+              <button onClick={() => doc && loadAndExtract(doc, pageIndex, true)}>再自動検出</button>
             </div>
 
             <span className="spacer" />
-            <button
-              className="primary"
-              disabled={regions.length === 0}
-              onClick={() => downloadCsv(result)}
-            >
+            <button className="primary" disabled={rooms.length === 0} onClick={() => downloadCsv(result)}>
               CSV出力
             </button>
           </>
@@ -233,11 +280,11 @@ export default function App() {
           <button onClick={() => setMode("select")}>キャンセル</button>
         </div>
       )}
-      {(mode === "draw-ceiling" || mode === "draw-wall") && (
+      {mode === "draw-ceiling" && <div className="banner info">天井作図: ドラッグで矩形を描いてください（新しい室になります）。</div>}
+      {mode === "draw-wall" && (
         <div className="banner info">
-          {mode === "draw-ceiling"
-            ? "天井作図: ドラッグで矩形を描いてください。"
-            : "壁作図: 始点と終点を順にクリックしてください。"}
+          壁作図: 始点と終点をクリック。
+          {selectedRoomId ? "選択中の室に追加されます。" : "室が未選択のため新規室を作成します。"}
         </div>
       )}
       {status && <div className="banner info">{status}</div>}
@@ -248,50 +295,59 @@ export default function App() {
             <PdfViewer
               page={page!}
               renderScale={renderScale}
-              regions={regions}
+              rooms={rooms}
               mode={mode}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onViewport={() => {}}
+              selectedRoomId={selectedRoomId}
+              onSelectRoom={setSelectedRoomId}
               onCalibrate={onCalibrate}
-              onAddRegion={addRegion}
+              onAddCeiling={addCeiling}
+              onAddWall={addWall}
             />
           ) : (
             <div className="empty" style={{ marginTop: 80 }}>
               {busy ? "処理中…" : "「PDFを開く」から図面を読み込んでください。"}
               <br />
-              <span className="hint">
-                ベクター（CADエクスポート）PDFで自動検出の精度が高くなります。
-              </span>
+              <span className="hint">ベクター（CADエクスポート）PDFで自動検出の精度が高くなります。</span>
             </div>
           )}
         </div>
 
         <div className="sidebar">
           <div className="tabbar">
-            <button className={tab === "regions" ? "active" : ""} onClick={() => setTab("regions")}>
-              領域
+            <button className={tab === "rooms" ? "active" : ""} onClick={() => setTab("rooms")}>
+              室・壁・開口
+            </button>
+            <button className={tab === "boards" ? "active" : ""} onClick={() => setTab("boards")}>
+              ボード種類
             </button>
             <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
-              仕様設定
+              設定
             </button>
             <button className={tab === "results" ? "active" : ""} onClick={() => setTab("results")}>
-              積算結果
+              拾い出し
             </button>
           </div>
 
-          {tab === "regions" && (
-            <RoomList
-              regions={regions}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onChange={updateRegion}
-              onDelete={deleteRegion}
+          {tab === "rooms" && (
+            <RoomPanel
+              rooms={rooms}
+              selectedRoomId={selectedRoomId}
+              scale={scale}
+              settings={settings}
+              onSelectRoom={setSelectedRoomId}
+              onChangeRoom={updateRoom}
+              onDeleteRoom={deleteRoom}
+              onAddRoom={addRoom}
+              onGenerateWalls={generateWalls}
             />
           )}
-          {tab === "settings" && (
-            <SettingsPanel settings={settings} onChange={setSettings} />
+          {tab === "boards" && (
+            <BoardTypesPanel
+              boardTypes={settings.boardTypes}
+              onChange={(boardTypes) => setSettings((s) => ({ ...s, boardTypes }))}
+            />
           )}
+          {tab === "settings" && <SettingsPanel settings={settings} onChange={setSettings} />}
           {tab === "results" && <ResultsTable result={result} />}
         </div>
       </div>
