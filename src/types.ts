@@ -36,6 +36,8 @@ export interface Room {
   openings: Opening[];
   openingReinforceM: number;
   notes: string;
+  regionPage: number;
+  bbox: { x: number; y: number; w: number; h: number };
 }
 
 export type Confidence = "high" | "medium" | "low";

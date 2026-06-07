@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { analyzeImages, getHealth, type HealthInfo } from "./api";
 import { loadPdf, renderPageToImage, type PdfDoc, type RenderedPage } from "./pdf";
 import { downloadCsv } from "./export";
+import { roomColor } from "./colors";
 import type { Takeoff } from "./types";
 import ResultEditor from "./components/ResultEditor";
 
@@ -21,6 +22,7 @@ export default function App() {
   const [hint, setHint] = useState("");
   const [set, setSet] = useState<SetItem[]>([]);
   const [takeoff, setTakeoff] = useState<Takeoff | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [isMock, setIsMock] = useState(false);
@@ -93,7 +95,16 @@ export default function App() {
       setStatus(`AIが${targets.length}枚の図面を読み取り中…（枚数に応じて1〜3分ほど）`);
       const res = await analyzeImages(images, hint);
       setTakeoff(res.takeoff);
+      setSelectedRoom(null);
       setIsMock(res.mock);
+      // 最も多くの室が指す平面図ページへ自動で移動（色枠を見せる）
+      const pages = res.takeoff.rooms.map((r) => r.regionPage).filter((p) => p > 0);
+      if (pages.length > 0) {
+        const counts = new Map<number, number>();
+        pages.forEach((p) => counts.set(p, (counts.get(p) ?? 0) + 1));
+        const mode = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+        if (mode && mode !== pageIndex) await gotoPage(mode);
+      }
       setStatus(
         res.mock
           ? "サンプル表示中（APIキー未設定）。"
@@ -105,6 +116,17 @@ export default function App() {
       setBusy(false);
     }
   };
+
+  const locateRoom = (i: number) => {
+    setSelectedRoom(i);
+    const r = takeoff?.rooms[i];
+    if (r && r.regionPage > 0 && r.regionPage !== pageIndex) gotoPage(r.regionPage);
+  };
+
+  // 現在ページに位置する室の色枠（全室での通し番号で色を決める）
+  const overlays = (takeoff?.rooms ?? [])
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) => r.regionPage === pageIndex && r.bbox && (r.bbox.w > 0 || r.bbox.h > 0));
 
   const inSet = set.some((s) => s.page === pageIndex);
   const analyzeLabel = set.length > 0 ? `解析セット（${set.length}枚）をAIで拾う` : "このページをAIで拾う";
@@ -180,7 +202,41 @@ export default function App() {
               </div>
 
               <div className="preview">
-                <img src={page.dataUrl} alt="図面プレビュー" />
+                <div className="canvas-wrap">
+                  <img src={page.dataUrl} alt="図面プレビュー" />
+                  {overlays.length > 0 && (
+                    <svg className="overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      {overlays.map(({ r, i }) => {
+                        const c = roomColor(i);
+                        const sel = i === selectedRoom;
+                        return (
+                          <g key={i} onClick={() => setSelectedRoom(i)} style={{ cursor: "pointer" }}>
+                            <rect
+                              x={r.bbox.x * 100}
+                              y={r.bbox.y * 100}
+                              width={r.bbox.w * 100}
+                              height={r.bbox.h * 100}
+                              fill={c}
+                              fillOpacity={sel ? 0.32 : 0.16}
+                              stroke={c}
+                              strokeWidth={sel ? 0.6 : 0.3}
+                              vectorEffect="non-scaling-stroke"
+                            />
+                            <text
+                              x={r.bbox.x * 100 + 0.6}
+                              y={r.bbox.y * 100 + 2.4}
+                              fontSize={2}
+                              fill={c}
+                              fontWeight={700}
+                            >
+                              {r.name}
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  )}
+                </div>
               </div>
             </>
           ) : (
@@ -196,7 +252,13 @@ export default function App() {
           {takeoff ? (
             <>
               {isMock && <div className="mock-banner">⚠ サンプルデータ（AI未使用）。.env に APIキーを設定すると実図面を解析します。</div>}
-              <ResultEditor takeoff={takeoff} onChange={setTakeoff} onExport={() => downloadCsv(takeoff)} />
+              <ResultEditor
+                takeoff={takeoff}
+                onChange={setTakeoff}
+                onExport={() => downloadCsv(takeoff)}
+                selectedRoom={selectedRoom}
+                onLocate={locateRoom}
+              />
             </>
           ) : (
             <div className="empty">

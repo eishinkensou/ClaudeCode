@@ -1,16 +1,19 @@
 import type { BoardArea, Opening, Room, Takeoff, WallBoard } from "../types";
 import { computeTotals } from "../totals";
+import { roomColor } from "../colors";
 
 interface Props {
   takeoff: Takeoff;
   onChange: (t: Takeoff) => void;
   onExport: () => void;
+  selectedRoom?: number | null;
+  onLocate?: (i: number) => void;
 }
 
 const f2 = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
 const num = (v: string) => (v === "" ? 0 : Number(v));
 
-export default function ResultEditor({ takeoff, onChange, onExport }: Props) {
+export default function ResultEditor({ takeoff, onChange, onExport, selectedRoom, onLocate }: Props) {
   const totals = computeTotals(takeoff);
 
   const setRoom = (i: number, patch: Partial<Room>) => {
@@ -38,6 +41,8 @@ export default function ResultEditor({ takeoff, onChange, onExport }: Props) {
           openings: [],
           openingReinforceM: 0,
           notes: "",
+          regionPage: 0,
+          bbox: { x: 0, y: 0, w: 0, h: 0 },
         },
       ],
     });
@@ -86,8 +91,17 @@ export default function ResultEditor({ takeoff, onChange, onExport }: Props) {
 
       {/* 室別（編集可） */}
       <div className="section-title">室別（AIの下拾い — 確認・修正してください）</div>
+      <div className="hint" style={{ marginBottom: 8 }}>各室の色は図面上の色枠と対応。📍で図面の位置へ移動します。</div>
       {takeoff.rooms.map((room, i) => (
-        <RoomCard key={i} room={room} onChange={(p) => setRoom(i, p)} onDelete={() => deleteRoom(i)} />
+        <RoomCard
+          key={i}
+          room={room}
+          color={roomColor(i)}
+          selected={i === selectedRoom}
+          onLocate={onLocate ? () => onLocate(i) : undefined}
+          onChange={(p) => setRoom(i, p)}
+          onDelete={() => deleteRoom(i)}
+        />
       ))}
     </div>
   );
@@ -95,10 +109,16 @@ export default function ResultEditor({ takeoff, onChange, onExport }: Props) {
 
 function RoomCard({
   room,
+  color,
+  selected,
+  onLocate,
   onChange,
   onDelete,
 }: {
   room: Room;
+  color: string;
+  selected: boolean;
+  onLocate?: () => void;
   onChange: (patch: Partial<Room>) => void;
   onDelete: () => void;
 }) {
@@ -110,9 +130,15 @@ function RoomCard({
     onChange({ openings: room.openings.map((o, j) => (j === idx ? { ...o, ...patch } : o)) });
 
   return (
-    <div className="card">
+    <div className="card" style={selected ? { outline: `2px solid ${color}` } : undefined}>
       <div className="card-head">
+        <span className="swatch" style={{ background: color }} />
         <input className="room-name" value={room.name} onChange={(e) => onChange({ name: e.target.value })} />
+        {onLocate && (
+          <button className="locate" onClick={onLocate} title="図面の位置へ" disabled={room.regionPage <= 0}>
+            📍図面
+          </button>
+        )}
         <button className="danger" onClick={onDelete}>削除</button>
       </div>
 

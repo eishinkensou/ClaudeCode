@@ -26,6 +26,8 @@ export const MOCK_TAKEOFF = {
       ],
       openingReinforceM: 4.9,
       notes: "床面積≒天井面積。壁下地はスラブまで(H4000)、ボードは天井下(H2700)想定のサンプル値。",
+      regionPage: 1,
+      bbox: { x: 0.08, y: 0.12, w: 0.5, h: 0.4 },
     },
     {
       name: "会議室",
@@ -44,6 +46,8 @@ export const MOCK_TAKEOFF = {
       ],
       openingReinforceM: 16.9,
       notes: "サンプル。窓補強=2×1.2+2×1.8=6.0m/か所 ×2。",
+      regionPage: 1,
+      bbox: { x: 0.62, y: 0.12, w: 0.3, h: 0.35 },
     },
   ],
 };

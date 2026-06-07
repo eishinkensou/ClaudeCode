@@ -24,6 +24,8 @@ const sample: Takeoff = {
       openings: [{ name: "SD-1", kind: "door", widthMm: 900, heightMm: 2000, count: 1, reinforceM: 4.9 }],
       openingReinforceM: 4.9,
       notes: "根拠",
+      regionPage: 1,
+      bbox: { x: 0.1, y: 0.1, w: 0.4, h: 0.4 },
     },
     {
       name: "会議室",
@@ -39,6 +41,8 @@ const sample: Takeoff = {
       openings: [],
       openingReinforceM: 0,
       notes: "",
+      regionPage: 1,
+      bbox: { x: 0.5, y: 0.1, w: 0.3, h: 0.3 },
     },
   ],
 };

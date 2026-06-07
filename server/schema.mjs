@@ -36,6 +36,17 @@ const Room = z.object({
   openings: z.array(Opening).describe("この室の開口（建具）"),
   openingReinforceM: z.number().describe("開口補強の合計延長 m"),
   notes: z.string().describe("この室の拾いの根拠・前提（読み取った寸法や仮定）"),
+  regionPage: z
+    .number()
+    .describe("この室の位置が分かる図面のページ番号（主に平面図。見出し『p.X』の番号。不明は0）"),
+  bbox: z
+    .object({
+      x: z.number().describe("室範囲の左端 (0=画像左, 1=画像右)"),
+      y: z.number().describe("室範囲の上端 (0=画像上, 1=画像下)"),
+      w: z.number().describe("室範囲の幅 (0〜1)"),
+      h: z.number().describe("室範囲の高さ (0〜1)"),
+    })
+    .describe("平面図画像内での室のおおよその範囲（正規化座標0〜1）。色分け照合用。不明は全て0"),
 });
 
 export const Takeoff = z.object({
@@ -72,6 +83,11 @@ export const SYSTEM_PROMPT = `あなたは日本の内装仕上・軽量鉄骨�
 2. 各室について、読み取れた寸法から面積・延長を計算する。読み取れない場合は近傍の寸法やグリッド（例: 910/1000mm）から合理的に推定し、推定であることを notes と warnings に必ず記載する。
 3. 縮尺や寸法が全く読めない場合は confidence を low にし、数量は概算とし、その旨を assumptions に明記する。
 4. 値が不明な数値項目は 0 を入れ、notes で説明する。憶測で確定値のように書かない。
+
+# 位置情報（色分け照合用・重要）
+- 各室について、その室が描かれている平面図のページ番号を regionPage に入れる（見出し「=== 図面N（…）p.X ===」の X）。
+- その平面図画像の中で、室のおおよその範囲を bbox（正規化座標 x,y,w,h: 画像左上が(0,0)、右下が(1,1)）で返す。
+- 利用者が図面上に色枠を重ねて拾い結果と照合できるようにするための情報。厳密でなくてよいが、室の位置と大きさが分かる程度には合わせること。位置が判断できない室は bbox を全て0、regionPage を0にする。
 
 # 重要
 - これはAIによる「下拾い」です。人が確認・修正する前提で、根拠（読み取った寸法・仮定）を notes に具体的に書くこと。
