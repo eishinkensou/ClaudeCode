@@ -1,27 +1,31 @@
 {
-  "name": "keiten-estimator",
+  "name": "sekisan-ai",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "PDF図面から軽天工事（天井・間仕切壁・ボード）を自動積算するWebアプリ",
+  "description": "PDF図面をClaudeのビジョンAIで読み取り、軽天・ボード工事を部屋ごとに自動積算するWebアプリ",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k -n web,api -c cyan,green \"vite\" \"node --watch server/index.mjs\"",
+    "server": "node server/index.mjs",
     "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "verify": "tsx scripts/verify-extract.ts"
+    "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.102.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/express": "^5.0.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
-    "tsx": "^4.22.4",
+    "concurrently": "^9.1.2",
     "typescript": "^5.6.3",
     "vite": "^6.0.5",
     "vitest": "^2.1.8"

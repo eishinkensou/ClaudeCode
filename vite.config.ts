@@ -2,19 +2,15 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// pdfjs-dist は worker を別チャンクとして読み込むため、
-// ESM worker を許可する設定にしている。
+// フロントの /api 呼び出しを Express サーバ（8787）へプロキシする。
 export default defineConfig({
   plugins: [react()],
-  base: "./",
-  worker: {
-    format: "es",
+  server: {
+    port: 5173,
+    proxy: {
+      "/api": "http://localhost:8787",
+    },
   },
-  optimizeDeps: {
-    include: ["pdfjs-dist"],
-  },
-  test: {
-    environment: "node",
-    include: ["src/**/*.test.ts"],
-  },
+  worker: { format: "es" },
+  test: { environment: "node", include: ["src/**/*.test.ts"] },
 });
